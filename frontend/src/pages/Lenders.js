@@ -3,7 +3,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Checkbox } from '../components/ui/checkbox';
 import { Skeleton } from '../components/ui/skeleton';
 import { Textarea } from '../components/ui/textarea';
@@ -305,6 +305,9 @@ export function Lenders() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingLender ? 'Edit Lender' : 'Add Lender'}</DialogTitle>
+            <DialogDescription className="sr-only">
+              {editingLender ? 'Edit lender details' : 'Add a new lender to your panel'}
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-5 mt-4">
             <div>

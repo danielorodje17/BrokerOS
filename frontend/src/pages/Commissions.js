@@ -3,7 +3,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Skeleton } from '../components/ui/skeleton';
 
@@ -306,6 +306,9 @@ export function Commissions() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingCommission ? 'Edit Commission' : 'Add Commission'}</DialogTitle>
+            <DialogDescription className="sr-only">
+              {editingCommission ? 'Edit commission record' : 'Add a new commission record'}
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-5 mt-4">
             <div>
