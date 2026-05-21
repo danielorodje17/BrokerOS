@@ -1,0 +1,112 @@
+{
+  "theme": "light",
+  "archetype": "Swiss & High-Contrast (User Specified)",
+  "colors": {
+    "primary": "#0A2342",
+    "background": "#F8F9FA",
+    "card_background": "#FFFFFF",
+    "accent_primary": "#0E9F6E",
+    "accent_secondary": "#F59E0B",
+    "destructive": "#EF4444",
+    "sidebar_text": "#FFFFFF",
+    "body_text": "#111827",
+    "muted_text": "#6B7280",
+    "table_hover": "#F3F4F6",
+    "border": "#E5E7EB"
+  },
+  "typography": {
+    "font_family": "Inter, sans-serif",
+    "weights": [400, 500, 600, 700],
+    "h1": { "size": "24px", "weight": 600, "color": "#111827" },
+    "h2_h3": { "size": "18px", "weight": 600, "color": "#111827" },
+    "body": { "size": "14px", "weight": 400, "color": "#111827" },
+    "muted": { "size": "13px", "weight": 400, "color": "#6B7280" },
+    "sidebar_nav": { "size": "14px", "weight": 500, "color": "#FFFFFF" },
+    "logo_main": { "size": "18px", "weight": 700, "color": "#FFFFFF" },
+    "logo_sub": { "size": "12px", "weight": 400, "color": "#93C5FD" }
+  },
+  "layout": {
+    "sidebar": {
+      "width": "240px",
+      "fixed": true,
+      "background": "#0A2342",
+      "nav_item_height": "44px",
+      "nav_padding_x": "16px",
+      "active_border_left": "3px solid #0E9F6E",
+      "active_bg": "#1E3A5F",
+      "icons": false
+    },
+    "spacing": {
+      "page_padding": "32px",
+      "section_gap": "24px",
+      "card_padding": "24px",
+      "form_field_gap": "20px"
+    },
+    "general": {
+      "gradients": false,
+      "box_shadows": false,
+      "max_border_radius": "8px (except badges)"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": { "bg": "#0E9F6E", "text": "#FFFFFF", "radius": "8px", "size": "14px", "pad_y": "12px", "pad_x": "20px", "shadow": false },
+      "secondary": { "bg": "#FFFFFF", "border": "1px solid #E5E7EB", "text": "#111827" },
+      "destructive": { "bg": "#EF4444", "text": "#FFFFFF" },
+      "disabled": { "bg": "#D1D5DB", "text": "#9CA3AF" },
+      "hover_effect": "darkens background by 10%"
+    },
+    "cards": {
+      "bg": "#FFFFFF",
+      "border": "1px solid #E5E7EB",
+      "radius": "8px",
+      "padding": "24px",
+      "shadow": false
+    },
+    "tables": {
+      "header_bg": "#F9FAFB",
+      "header_text": "#6B7280",
+      "header_font": "13px",
+      "header_weight": 600,
+      "header_transform": "uppercase",
+      "header_spacing": "0.05em",
+      "row_bg": "#FFFFFF",
+      "row_hover": "#F3F4F6",
+      "row_height": "52px",
+      "border_bottom": "1px solid #E5E7EB",
+      "outer_border": false
+    },
+    "badges": {
+      "radius": "9999px",
+      "padding": "2px 10px",
+      "size": "12px",
+      "weight": 500
+    },
+    "forms": {
+      "input_bg": "#FFFFFF",
+      "input_border": "1px solid #E5E7EB",
+      "input_radius": "6px",
+      "input_size": "14px",
+      "input_pad_y": "10px",
+      "input_pad_x": "12px",
+      "focus_border": "#0E9F6E",
+      "focus_shadow": false,
+      "label_size": "13px",
+      "label_weight": 500,
+      "label_color": "#374151",
+      "layout_desktop": "2-column",
+      "layout_mobile": "1-column (<768px)"
+    }
+  },
+  "formatting": {
+    "currency": "£ prefix, comma-formatted",
+    "dates": "DD/MM/YYYY"
+  },
+  "rules_and_behaviors": {
+    "loaders": "Skeleton loaders on tables",
+    "toast": "Top-right, 4 second auto-dismiss",
+    "data_testid": "MANDATORY on all interactive and key informational elements",
+    "file_extensions": "Use .js instead of .tsx (use React + JSX in .js files)"
+  },
+  "instructions_to_main_agent": "Strictly adhere to the user's provided design constraints. Use Tailwind CSS with explicit arbitrary values (e.g. bg-[#0A2342], text-[#0E9F6E]) where standard classes don't match exactly. Do NOT use box shadows (apply shadow-none). Do NOT use border radius over 8px (rounded-md max) except for pills. Forms should be 2-column on md+ screens. Create .js files using modern React standard. Include data-testid on every interactive element. Do not use icons in the sidebar as per user choice. For the user avatar, use initials fallback (e.g. via Shadcn Avatar component)."
+}
