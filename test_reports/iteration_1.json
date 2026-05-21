@@ -1,0 +1,45 @@
+{
+  "summary": "First test run for BrokerOS MVP. Backend: 27/27 pytest tests pass after fixing critical MongoDB ObjectId serialization bug in 6 create endpoints. Frontend: all 7 modules (Login, Dashboard, Clients, Cases, Pipeline, Lenders, Commissions, Settings) render and main CRUD flows work end-to-end via UI.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "CORS allow_origins", "issue": "CORS_ORIGINS env var defined but never used; only FRONTEND_URL + hardcoded localhost are allowed origins. Consider parsing CORS_ORIGINS for multi-origin support."},
+      {"endpoint": "/api/auth/login brute-force", "issue": "Uses request.client.host which behind ingress/proxy may always be the proxy IP, causing global lockouts. Should respect X-Forwarded-For."},
+      {"endpoint": "/api/cases search", "issue": "Only searches in notes field; client name/email not searchable from cases list."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All Dialog modals (Add Client, Add Lender)", "issues": ["Console warning: Missing `Description` or `aria-describedby` for DialogContent (Radix UI accessibility warning) - add DialogDescription for screen readers"]},
+      {"screen": "Settings", "issues": ["Email field shows admin@brokeros.com as placeholder text (grey) rather than as a disabled input value; could confuse users into thinking it is empty"]},
+      {"screen": "Commissions", "issues": ["'Add Commission' button is disabled (greyed) when no cases exist - acceptable behavior but no tooltip explaining why"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Add DialogDescription / aria-describedby to all DialogContent components to remove accessibility warnings",
+    "(Optional) Parse CORS_ORIGINS env var to support multiple origins",
+    "(Optional) Respect X-Forwarded-For when computing rate-limit identifier",
+    "(Optional) Extend /api/cases search to include client name/email"
+  ],
+  "critical_code_review_comments": [
+    "FIXED by testing agent: 6 POST endpoints (clients/cases/lenders/commissions/notes/documents) returned the dict mutated by Motor's insert_one which contained BSON ObjectId in _id, causing 500 Internal Server Error on every create. Added `doc.pop('_id', None)` after each insert in /app/backend/server.py.",
+    "server.py is 900 lines - all routes in single file. Should be split into modules (auth.py, clients.py, cases.py, lenders.py, commissions.py, dashboard.py) per code-review guidelines (>700 lines)",
+    "JWT_SECRET has insecure default in code (`brokeros_secure_jwt_secret_key_64chars_...`). Should fail-fast if not set in env.",
+    "Cookies set with secure=False - acceptable for dev/preview but must be True in production with HTTPS",
+    "/api/documents/upload returns 500 if EMERGENT_LLM_KEY not set (storage_init returns None -> 503). This is acknowledged as MOCKED."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (fixed _id ObjectId leakage in 6 create endpoints)",
+    "/app/backend/tests/backend_test.py (new file - 27 tests)"
+  ],
+  "success_rate": {"backend": "100% (27/27 after fix)", "frontend": "100% on tested flows (login, dashboard, clients create, lenders create, cases nav, pipeline nav, commissions nav, settings view)"},
+  "test_credentials": "admin@brokeros.com / Admin123! (verified working)",
+  "seed_data_creation": "Test creates and cleans up TEST_-prefixed clients/cases/lenders/commissions. One TEST_UI_Client and TEST_UI_Lender created via UI playwright run (left in DB). FCA number on admin profile updated to FCA-TEST-001 by settings test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest suite at /app/backend/tests/backend_test.py covers auth (login, register, me, logout, brute-force-friendly), clients/cases/lenders/commissions CRUD, dashboard stats, settings profile/password, notes. Run with: pytest /app/backend/tests/backend_test.py -v. The critical ObjectId bug was fixed - if a regression appears with 500 on POST endpoints, check that insert_one's mutated doc is not returned with _id.",
+  "rca_of_the_issue": "Bug: All POST create endpoints returned 500. Root cause: motor's `insert_one(doc)` mutates `doc` in-place adding `_id: ObjectId(...)`. The endpoint then returned the dict, but FastAPI's jsonable_encoder cannot serialize bson.ObjectId, raising TypeError('ObjectId not iterable'). Fix: pop `_id` immediately after insert_one in clients, cases, lenders, commissions, notes, and documents endpoints. Reproduction: POST /api/clients with valid body -> 500 before fix, 200 after fix. Mitigation: code review for any future create endpoints to apply the same pop or use a Pydantic response_model."
+}
