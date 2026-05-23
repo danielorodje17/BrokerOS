@@ -122,9 +122,23 @@ All P0 features delivered in MVP.
 - **Collection**: invoice_sequences (user_id, year, last_number)
 - **PDF Library**: reportlab
 - **Content**: Broker info (name, FCA number), Lender, Client, Case reference, Loan amount, Commission amount, 30-day payment terms
+- **Persistence**: invoice_number now persisted on commission_records on PDF download (so it can be searched)
 
-## Next Tasks
-1. Set up EMERGENT_LLM_KEY for document storage
-2. Add case search by client name
-3. Add email notifications for commission tracking
-4. Consider splitting server.py into routers/ for maintainability
+### Commission Due-Date Reminders (Extension 3 — 23 May 2026)
+- **Endpoint**: GET /api/commissions/reminders → {success, data:{due_soon[], overdue[]}}
+- **due_soon**: non-received commissions with expected_payment_date within next 14 days (sorted asc by days_until_due)
+- **overdue**: non-received commissions with expected_payment_date >30 days in the past (sorted asc by days_overdue)
+- **UI**: Yellow (#FEF3C7/#F59E0B) "Due Soon" panel + Red (#FEF2F2/#EF4444) "Overdue" panel above filters; dismiss button; each reminder is clickable → scrolls to row and applies bg-yellow-100 flash for 2s
+
+### Search Improvements (Extension 4 — 23 May 2026)
+- **Pipeline.js**: Added Kanban/List view toggle. Search bar visible ONLY in List view; client-side, real-time, case-insensitive; matches client first/last/full name and lender name. Empty-state with "Clear search" button.
+- **Commissions.js**: Search now matches client name, lender name, AND invoice_number (INV-YYYY-NNNN). Placeholder updated to "Search by client, lender or invoice #...".
+
+## Next Tasks (Open Backlog)
+1. Set up EMERGENT_LLM_KEY for document storage (P1)
+2. Email notifications for commission due dates (P1)
+3. Make invoice sequence atomic (use findOneAndUpdate with $inc + upsert to avoid race conditions in concurrent invoice generation)
+4. Server-side search on Commissions & Pipeline (currently client-side, only filters current page of paginated results)
+5. Reduce N+1 queries in /api/commissions/reminders via $lookup or batched $in queries
+6. Phase 2 AI features (lender matching, OCR auto-fill, rate comparison)
+
