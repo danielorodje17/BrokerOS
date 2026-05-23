@@ -167,12 +167,30 @@ All P0 features delivered in MVP.
 - **`scripts/migrate_assign_cases.py`**: Idempotent migration assigns orphaned cases to first admin
 - Tested: 31/31 backend + 100% frontend ✅
 
+## Phase 2 - AI Features
+
+### AI Feature 1: Borrower Strength Score (23 May 2026)
+- **Endpoint**: `POST /api/ai/borrower-score` body `{client_id}` → `{success, data:{score, classification, colour, summary, breakdown}}`
+- **Score model** (deterministic, 0-100):
+  - Employment (max 30): employed=30, contractor=22, self_employed=18, retired=15, other=10
+  - Income (max 25): >£75k=25, £50-75k=20, £35-50k=15, £20-35k=10, <£20k=5
+  - Credit (max 30): clean=30, minor_issues=18, adverse=5
+  - GDPR consent (max 10): yes=10, no=0
+  - Documents (max 5): ≥1 file=5, else=0
+- **Classification**: ≥80=Strong(green), ≥60=Good(teal), ≥40=Fair(amber), <40=Weak(red)
+- **AI summary**: Claude `claude-sonnet-4-5` via `emergentintegrations.LlmChat` with `EMERGENT_LLM_KEY`. 2-3 sentence plain-English broker brief. Graceful degradation on Claude failure.
+- **UI**: Borrower Strength Score card on `CaseDetail.js` below Client Details — large coloured score, classification badge, horizontal progress bar, AI summary panel, 5 breakdown rows, Recalculate button. Auto-loads on page mount via `client.id` from case.
+- **Files**: `routes/ai.py`, `routes/__init__.py`, `server.py` (ai_router registered), `frontend/src/pages/CaseDetail.js`
+- **Tested**: 13/13 backend pytest + 100% frontend (iteration_7.json)
+
 ## Next Tasks (Open Backlog)
 1. Document storage with Emergent Object Storage (P1)
 2. Email notifications for commission due dates (P1)
-3. Team management UI — invite advisers, assign team_id, set roles (P1)
-4. Server-side search on Commissions & Pipeline (currently client-side, filters current page only)
-5. Reduce N+1 queries in reminders/clawback/cases list endpoints via $lookup
-6. Commission reminders/clawback-risk to respect team scope for admins (currently personal view)
-7. Phase 2 AI features (lender matching, OCR auto-fill, rate comparison)
+3. Phase 2 AI Features 2, 3, 4 (awaiting specs from user) (P1)
+4. Team management UI — invite advisers, assign team_id, set roles (P1)
+5. Server-side search on Commissions & Pipeline (currently client-side, filters current page only)
+6. Reduce N+1 queries in reminders/clawback/cases list endpoints via $lookup
+7. Commission reminders/clawback-risk to respect team scope for admins (currently personal view)
+8. Borrower Score: cache result per client_id with manual invalidation on Recalculate (avoid LLM call on every recalculate)
+9. Refactor CaseDetail.js — extract BorrowerScoreCard and NotesTimeline into separate components (~510 lines)
 
