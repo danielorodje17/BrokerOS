@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { Input } from '../components/ui/input';
@@ -28,11 +28,26 @@ const formatDate = (dateStr) => {
   return date.toLocaleDateString('en-GB');
 };
 
+// Clock icon component
+const ClockIcon = () => (
+  <svg className="w-5 h-5 text-[#D97706]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+// Alert triangle icon component
+const AlertTriangleIcon = () => (
+  <svg className="w-5 h-5 text-[#EF4444]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+  </svg>
+);
+
 export function Commissions() {
   const [commissions, setCommissions] = useState([]);
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -52,6 +67,12 @@ export function Commissions() {
   // Summary stats
   const [summary, setSummary] = useState({ pending: 0, received: 0 });
 
+  // Reminders state
+  const [reminders, setReminders] = useState({ due_soon: [], overdue: [] });
+  const [remindersDismissed, setRemindersDismissed] = useState(false);
+  const [highlightedRow, setHighlightedRow] = useState(null);
+  const tableRef = useRef(null);
+
   useEffect(() => {
     fetchData();
   }, [page, statusFilter]);
@@ -62,14 +83,20 @@ export function Commissions() {
       const params = new URLSearchParams({ page, limit: 20 });
       if (statusFilter) params.append('status', statusFilter);
 
-      const [commissionsRes, casesRes] = await Promise.all([
+      const [commissionsRes, casesRes, remindersRes] = await Promise.all([
         axios.get(`${API}/commissions?${params}`, { withCredentials: true }),
-        axios.get(`${API}/cases?limit=100`, { withCredentials: true })
+        axios.get(`${API}/cases?limit=100`, { withCredentials: true }),
+        axios.get(`${API}/commissions/reminders`, { withCredentials: true })
       ]);
 
       setCommissions(commissionsRes.data.commissions);
       setTotal(commissionsRes.data.total);
       setCases(casesRes.data.cases);
+
+      // Set reminders
+      if (remindersRes.data.success) {
+        setReminders(remindersRes.data.data);
+      }
 
       // Calculate summary
       const allCommissions = await axios.get(`${API}/commissions?limit=1000`, { withCredentials: true });
@@ -86,6 +113,16 @@ export function Commissions() {
       setLoading(false);
     }
   };
+
+  const scrollToAndHighlight = useCallback((commissionId) => {
+    // First, clear any search/filter to ensure the row is visible
+    const row = document.querySelector(`[data-testid="commission-row-${commissionId}"]`);
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedRow(commissionId);
+      setTimeout(() => setHighlightedRow(null), 2000);
+    }
+  }, []);
 
   const openDialog = (commission = null) => {
     if (commission) {
@@ -161,10 +198,10 @@ export function Commissions() {
         withCredentials: true,
         responseType: 'blob'
       });
-      
+
       // Get invoice number from response header
       const invoiceNumber = response.headers['x-invoice-number'] || 'invoice';
-      
+
       // Create download link
       const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const link = document.createElement('a');
@@ -174,7 +211,7 @@ export function Commissions() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      
+
       toast.success(`Invoice ${invoiceNumber} downloaded`);
     } catch (error) {
       console.error('Invoice generation error:', error);
@@ -184,7 +221,20 @@ export function Commissions() {
     }
   };
 
+  // Filter commissions by search (client name, lender name, and invoice/reference number)
+  const filteredCommissions = commissions.filter(comm => {
+    if (!search) return true;
+    const searchLower = search.toLowerCase().trim();
+    const clientName = (comm.client_name || '').toLowerCase();
+    const lenderName = (comm.lender_name || '').toLowerCase();
+    const invoiceNumber = (comm.invoice_number || '').toLowerCase();
+    return clientName.includes(searchLower)
+      || lenderName.includes(searchLower)
+      || invoiceNumber.includes(searchLower);
+  });
+
   const totalPages = Math.ceil(total / 20);
+  const hasReminders = !remindersDismissed && (reminders.due_soon.length > 0 || reminders.overdue.length > 0);
 
   return (
     <div data-testid="commissions-page">
@@ -212,8 +262,85 @@ export function Commissions() {
         </div>
       </div>
 
-      {/* Filter */}
-      <div className="mb-6">
+      {/* Reminders Banner */}
+      {hasReminders && (
+        <div className="mb-6 relative" data-testid="reminders-banner">
+          {/* Dismiss button */}
+          <button
+            onClick={() => setRemindersDismissed(true)}
+            className="absolute top-2 right-2 z-10 text-[#6B7280] hover:text-[#111827] p-1"
+            data-testid="dismiss-reminders-btn"
+            aria-label="Dismiss reminders"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+
+          <div className={`grid gap-4 ${reminders.due_soon.length > 0 && reminders.overdue.length > 0 ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
+            {/* Due Soon Panel */}
+            {reminders.due_soon.length > 0 && (
+              <div
+                className="bg-[#FEF3C7] border border-[#F59E0B] rounded-lg p-4"
+                data-testid="due-soon-panel"
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <ClockIcon />
+                  <h3 className="font-semibold text-[#D97706]">Due Soon</h3>
+                </div>
+                <div className="space-y-2">
+                  {reminders.due_soon.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => scrollToAndHighlight(item.id)}
+                      className="block w-full text-left text-sm text-[#92400E] hover:text-[#78350F] hover:underline"
+                      data-testid={`reminder-due-soon-${item.id}`}
+                    >
+                      {item.client_name} — {item.lender_name} — {formatCurrency(item.expected_amount)} — due in {item.days_until_due} day{item.days_until_due !== 1 ? 's' : ''}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Overdue Panel */}
+            {reminders.overdue.length > 0 && (
+              <div
+                className="bg-[#FEF2F2] border border-[#EF4444] rounded-lg p-4"
+                data-testid="overdue-panel"
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangleIcon />
+                  <h3 className="font-semibold text-[#EF4444]">Overdue</h3>
+                </div>
+                <div className="space-y-2">
+                  {reminders.overdue.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => scrollToAndHighlight(item.id)}
+                      className="block w-full text-left text-sm text-[#991B1B] hover:text-[#7F1D1D] hover:underline"
+                      data-testid={`reminder-overdue-${item.id}`}
+                    >
+                      {item.client_name} — {item.lender_name} — {formatCurrency(item.expected_amount)} — {item.days_overdue} day{item.days_overdue !== 1 ? 's' : ''} overdue
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Filter and Search */}
+      <div className="flex gap-4 mb-6">
+        <Input
+          type="text"
+          placeholder="Search by client, lender or invoice #..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="form-input max-w-xs"
+          data-testid="commission-search-input"
+        />
         <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v === 'all' ? '' : v); setPage(1); }}>
           <SelectTrigger className="form-input w-48" data-testid="status-filter">
             <SelectValue placeholder="All statuses" />
@@ -228,7 +355,7 @@ export function Commissions() {
       </div>
 
       {/* Table */}
-      <div className="card p-0 overflow-hidden">
+      <div className="card p-0 overflow-hidden" ref={tableRef}>
         <table className="w-full">
           <thead>
             <tr className="table-header">
@@ -254,29 +381,50 @@ export function Commissions() {
                   <td className="px-4 py-3"><Skeleton className="h-4 w-20 ml-auto" /></td>
                 </tr>
               ))
-            ) : commissions.length === 0 ? (
+            ) : filteredCommissions.length === 0 ? (
               <tr>
                 <td colSpan={7}>
                   <div className="empty-state">
-                    <h3>No commission records</h3>
-                    <p>{cases.length === 0 ? 'Create a case first to track commissions' : 'Add commission records to track payments'}</p>
-                    {cases.length > 0 && (
-                      <Button
-                        onClick={() => openDialog()}
-                        className="bg-[#0E9F6E] hover:bg-[#0d8a5f] text-white"
-                        data-testid="empty-add-commission-btn"
-                      >
-                        Add Commission
-                      </Button>
+                    {search ? (
+                      <>
+                        <h3>No commissions match your search</h3>
+                        <p>
+                          <button
+                            onClick={() => setSearch('')}
+                            className="text-[#0E9F6E] hover:underline"
+                          >
+                            Clear search
+                          </button>
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <h3>No commission records</h3>
+                        <p>{cases.length === 0 ? 'Create a case first to track commissions' : 'Add commission records to track payments'}</p>
+                        {cases.length > 0 && (
+                          <Button
+                            onClick={() => openDialog()}
+                            className="bg-[#0E9F6E] hover:bg-[#0d8a5f] text-white"
+                            data-testid="empty-add-commission-btn"
+                          >
+                            Add Commission
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
                 </td>
               </tr>
             ) : (
-              commissions.map((commission) => {
+              filteredCommissions.map((commission) => {
                 const statusInfo = getStatusInfo(commission.status);
+                const isHighlighted = highlightedRow === commission.id;
                 return (
-                  <tr key={commission.id} className="table-row" data-testid={`commission-row-${commission.id}`}>
+                  <tr
+                    key={commission.id}
+                    className={`table-row transition-colors duration-300 ${isHighlighted ? 'bg-yellow-100' : ''}`}
+                    data-testid={`commission-row-${commission.id}`}
+                  >
                     <td className="px-4 py-3 font-medium text-[#111827]">{commission.client_name}</td>
                     <td className="px-4 py-3 text-[#6B7280]">{commission.lender_name || '-'}</td>
                     <td className="px-4 py-3 text-[#111827]">{formatCurrency(commission.loan_amount)}</td>

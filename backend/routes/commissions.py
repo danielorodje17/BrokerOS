@@ -15,6 +15,89 @@ from .models import CommissionCreate
 router = APIRouter(prefix="/commissions", tags=["commissions"])
 
 
+# ========== REMINDERS ENDPOINT ==========
+@router.get("/reminders")
+async def get_commission_reminders(user: dict = Depends(get_current_user)):
+    """Get commission reminders - due soon (within 14 days) and overdue (past 30 days)"""
+    today = datetime.now(timezone.utc).date()
+    fourteen_days_later = today + timedelta(days=14)
+    thirty_days_ago = today - timedelta(days=30)
+
+    # Get all non-received commissions with expected_payment_date
+    query = {
+        "user_id": user["id"],
+        "status": {"$ne": "received"},
+        "expected_payment_date": {"$ne": None}
+    }
+    commissions = await db.commission_records.find(query, {"_id": 0}).to_list(1000)
+
+    due_soon = []
+    overdue = []
+
+    for comm in commissions:
+        expected_date_str = comm.get("expected_payment_date")
+        if not expected_date_str:
+            continue
+
+        try:
+            # Parse date - handle both YYYY-MM-DD and ISO format
+            if "T" in expected_date_str:
+                expected_date = datetime.fromisoformat(expected_date_str.replace("Z", "+00:00")).date()
+            else:
+                expected_date = datetime.strptime(expected_date_str, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            continue
+
+        # Get case and enrich with client/lender info
+        case = await db.cases.find_one({"id": comm.get("case_id")}, {"_id": 0, "client_id": 1, "lender_id": 1})
+        if not case:
+            continue
+
+        client = await db.clients.find_one({"id": case.get("client_id")}, {"_id": 0, "first_name": 1, "last_name": 1})
+        lender = await db.lenders.find_one({"id": case.get("lender_id")}, {"_id": 0, "name": 1})
+
+        client_name = f"{client['first_name']} {client['last_name']}" if client else "Unknown"
+        lender_name = lender.get("name") if lender else "Unknown"
+
+        # Format date as DD/MM/YYYY
+        formatted_date = expected_date.strftime("%d/%m/%Y")
+
+        # Check if due soon (between today and 14 days from now)
+        if today <= expected_date <= fourteen_days_later:
+            days_until_due = (expected_date - today).days
+            due_soon.append({
+                "id": comm.get("id"),
+                "client_name": client_name,
+                "lender_name": lender_name,
+                "expected_amount": comm.get("expected_amount"),
+                "expected_payment_date": formatted_date,
+                "days_until_due": days_until_due
+            })
+        # Check if overdue (more than 30 days in the past)
+        elif expected_date < thirty_days_ago:
+            days_overdue = (today - expected_date).days
+            overdue.append({
+                "id": comm.get("id"),
+                "client_name": client_name,
+                "lender_name": lender_name,
+                "expected_amount": comm.get("expected_amount"),
+                "expected_payment_date": formatted_date,
+                "days_overdue": days_overdue
+            })
+
+    # Sort by days (most urgent first)
+    due_soon.sort(key=lambda x: x["days_until_due"])
+    overdue.sort(key=lambda x: x["days_overdue"])
+
+    return {
+        "success": True,
+        "data": {
+            "due_soon": due_soon,
+            "overdue": overdue
+        }
+    }
+
+
 @router.get("")
 async def list_commissions(
     status: Optional[str] = None,
@@ -263,6 +346,12 @@ async def generate_commission_invoice(commission_id: str, user: dict = Depends(g
         })
 
     invoice_number = f"INV-{current_year}-{next_num:04d}"
+
+    # Persist invoice_number to the commission record (for searching by invoice ref)
+    await db.commission_records.update_one(
+        {"id": commission_id, "user_id": user["id"]},
+        {"$set": {"invoice_number": invoice_number, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
 
     # Prepare invoice data
     invoice_data = {
