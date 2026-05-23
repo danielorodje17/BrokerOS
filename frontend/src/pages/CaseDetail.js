@@ -61,6 +61,22 @@ const formatRelativeTime = (dateStr) => {
   return date.toLocaleDateString('en-GB');
 };
 
+// Borrower Strength Score classification → colour
+const SCORE_COLOURS = {
+  Strong: { hex: '#10B981', badge: 'bg-[#D1FAE5] text-[#065F46]' },
+  Good:   { hex: '#0E9F6E', badge: 'bg-[#CCFBF1] text-[#115E59]' },
+  Fair:   { hex: '#F59E0B', badge: 'bg-[#FEF3C7] text-[#92400E]' },
+  Weak:   { hex: '#EF4444', badge: 'bg-[#FEE2E2] text-[#991B1B]' },
+};
+
+const BREAKDOWN_LABELS = {
+  employment: 'Employment',
+  income: 'Income',
+  credit: 'Credit Profile',
+  gdpr: 'Consent on File',
+  documents: 'Documents',
+};
+
 export function CaseDetail() {
   const { caseId } = useParams();
   const navigate = useNavigate();
@@ -70,6 +86,8 @@ export function CaseDetail() {
   const [notesLoading, setNotesLoading] = useState(true);
   const [noteContent, setNoteContent] = useState('');
   const [addingNote, setAddingNote] = useState(false);
+  const [score, setScore] = useState(null);
+  const [scoreLoading, setScoreLoading] = useState(false);
 
   const fetchCase = useCallback(async () => {
     try {
@@ -95,10 +113,33 @@ export function CaseDetail() {
     }
   }, [caseId]);
 
+  const fetchScore = useCallback(async (clientId) => {
+    if (!clientId) return;
+    setScoreLoading(true);
+    try {
+      const { data } = await axios.post(
+        `${API}/ai/borrower-score`,
+        { client_id: clientId },
+        { withCredentials: true }
+      );
+      setScore(data.data);
+    } catch (error) {
+      toast.error('Failed to compute borrower score');
+    } finally {
+      setScoreLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchCase();
     fetchNotes();
   }, [fetchCase, fetchNotes]);
+
+  useEffect(() => {
+    if (caseData?.client?.id) {
+      fetchScore(caseData.client.id);
+    }
+  }, [caseData?.client?.id, fetchScore]);
 
   const handleAddNote = async () => {
     if (!noteContent.trim()) return;
@@ -261,6 +302,115 @@ export function CaseDetail() {
               <div className="text-[#111827] capitalize">{caseData.client.credit_profile?.replace('_', ' ') || '-'}</div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Borrower Strength Score */}
+      {caseData.client && (
+        <div className="card mb-6" data-testid="borrower-score-card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-[#111827]">Borrower Strength Score</h2>
+            <Button
+              variant="outline"
+              className="border-[#E5E7EB] text-sm"
+              onClick={() => fetchScore(caseData.client.id)}
+              disabled={scoreLoading}
+              data-testid="recalculate-score-btn"
+            >
+              {scoreLoading ? 'Calculating...' : 'Recalculate'}
+            </Button>
+          </div>
+
+          {scoreLoading && !score ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-6">
+                <Skeleton className="h-20 w-32" />
+                <Skeleton className="h-6 w-24" />
+              </div>
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+          ) : score ? (
+            <>
+              {/* Top: big score + classification badge */}
+              <div className="flex items-baseline gap-4 mb-4">
+                <div
+                  className="text-6xl font-bold leading-none"
+                  style={{ color: SCORE_COLOURS[score.classification]?.hex || '#111827' }}
+                  data-testid="borrower-score-value"
+                >
+                  {score.score}
+                </div>
+                <div className="text-2xl text-[#6B7280]">/ 100</div>
+                <span
+                  className={`badge ml-2 ${SCORE_COLOURS[score.classification]?.badge || 'badge-grey'}`}
+                  data-testid="borrower-score-classification"
+                >
+                  {score.classification}
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-full h-3 rounded-full bg-[#E5E7EB] overflow-hidden mb-6" data-testid="borrower-score-progress">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${score.score}%`,
+                    backgroundColor: SCORE_COLOURS[score.classification]?.hex || '#0E9F6E',
+                  }}
+                />
+              </div>
+
+              {/* AI summary */}
+              <div
+                className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg p-4 mb-6"
+                data-testid="borrower-score-summary"
+              >
+                <div className="text-xs uppercase tracking-wide text-[#6B7280] mb-2 font-semibold">
+                  AI Summary
+                </div>
+                <p className="text-[#111827] whitespace-pre-wrap leading-relaxed">{score.summary}</p>
+              </div>
+
+              {/* Breakdown */}
+              <div className="space-y-3" data-testid="borrower-score-breakdown">
+                <div className="text-xs uppercase tracking-wide text-[#6B7280] font-semibold mb-2">
+                  Score Breakdown
+                </div>
+                {Object.entries(score.breakdown).map(([key, item]) => {
+                  const pct = item.max > 0 ? (item.points / item.max) * 100 : 0;
+                  return (
+                    <div
+                      key={key}
+                      className="flex items-center gap-4"
+                      data-testid={`breakdown-row-${key}`}
+                    >
+                      <div className="w-40 shrink-0">
+                        <div className="text-sm font-medium text-[#111827]">
+                          {BREAKDOWN_LABELS[key] || key}
+                        </div>
+                        <div className="text-xs text-[#6B7280]">{item.label}</div>
+                      </div>
+                      <div className="flex-1 h-2 bg-[#E5E7EB] rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[#0E9F6E] rounded-full"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <div className="w-20 text-right text-sm font-medium text-[#111827] shrink-0">
+                        {item.points} / {item.max}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-8 text-[#6B7280]" data-testid="borrower-score-empty">
+              Unable to calculate score.
+            </div>
+          )}
         </div>
       )}
 

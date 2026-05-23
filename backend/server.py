@@ -39,6 +39,7 @@ api_router.include_router(notes_router)
 api_router.include_router(cases_notes_router)
 api_router.include_router(documents_router)
 api_router.include_router(dashboard_router)
+api_router.include_router(ai_router)
 
 
 # ========== STARTUP ==========

@@ -1,0 +1,36 @@
+{
+  "summary": "Phase 2 Borrower Strength Score (POST /api/ai/borrower-score) tested end-to-end. Backend 13/13 pytest assertions pass (auth, 404, score range, classification thresholds, breakdown structure, points<=max, deterministic score, Claude summary non-empty). Frontend CaseDetail page renders all required testids: borrower-score-card, borrower-score-value (85), borrower-score-classification (Strong), borrower-score-progress (width=85%), borrower-score-summary (Claude-generated 562-char text), and 5 breakdown rows (employment/income/credit/gdpr/documents). Recalculate button toggles to 'Calculating...' and back. Notes regression (add note) works.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase2_borrower_score.py",
+    "/app/test_reports/pytest/phase2_borrower_score.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/ai.py: bare `except Exception as e` swallows the error and silently degrades — log the exception (e.g., logger.exception) so prod issues with Claude/Emergent LLM key are observable.",
+    "routes/ai.py: EMERGENT_LLM_KEY read at module import time. If env loads later or rotates, server restart required. Consider reading inside the handler or fail-fast at startup if missing.",
+    "routes/ai.py: no rate limiting / caching on the AI endpoint. Each Recalculate click costs an LLM round-trip (~3-8s and tokens). Consider caching the computed score+summary (e.g., per client_id) with manual invalidation on Recalculate.",
+    "routes/ai.py: response shape is `{success, data}` while most other BrokerOS endpoints return data directly. Inconsistent envelope.",
+    "CaseDetail.js (~510 lines): approaching the 700-line guideline ceiling — extract BorrowerScoreCard and NotesTimeline into their own components for maintainability.",
+    "CaseDetail.js: `recalculate-score-btn` skeleton path (`scoreLoading && !score`) is only used on first load. On subsequent recalculates, the old score keeps rendering and only the button label changes — consider an overlay/spinner so the user sees progress for the 3-8s Claude call.",
+    "Frontend: no error-state UI distinct from initial empty-state — a failed recalculate just toasts and leaves stale score on screen with no retry CTA."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase2_borrower_score.py"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (all testids + recalc + regression)"},
+  "test_credentials": "admin@brokeros.com / Admin123!",
+  "seed_data_creation": "None. Used existing case 09ecdc6c-828e-4134-b316-9c112ccd2848 (James Wilson, scored 85/Strong).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Borrower Score endpoint + UI fully working. Test data: case 09ecdc6c-828e-4134-b316-9c112ccd2848 scores 85/Strong (employed, £85k, clean credit, no gdpr_consent, 0 docs). For new AI features, reuse the auth_session fixture pattern in /app/backend/tests/test_phase2_borrower_score.py. Claude calls take 3-8s — bump pytest timeouts and Playwright waits accordingly. Leftover 'TEST UI note 2023' lives in notes for case 09ecdc... from prior iteration; harmless.",
+  "rca of the issue": "N/A — no issues found."
+}
