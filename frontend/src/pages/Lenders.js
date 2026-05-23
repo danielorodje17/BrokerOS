@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { Input } from '../components/ui/input';
@@ -43,6 +43,24 @@ export function Lenders() {
     notes: ''
   });
   const [saving, setSaving] = useState(false);
+
+  // ---- Filter panel state ----
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterForm, setFilterForm] = useState({
+    loanAmount: '',
+    propertyValue: '',
+    employmentType: 'All',
+    creditProfile: 'All',
+  });
+  const [filteredLenders, setFilteredLenders] = useState(null); // null = show normal paginated view
+  const [matchResult, setMatchResult] = useState(null); // { count, noFilters }
+
+  const computedLTV = useMemo(() => {
+    const loan = parseFloat(filterForm.loanAmount);
+    const prop = parseFloat(filterForm.propertyValue);
+    if (!loan || !prop || prop === 0) return null;
+    return ((loan / prop) * 100).toFixed(1);
+  }, [filterForm.loanAmount, filterForm.propertyValue]);
 
   useEffect(() => {
     fetchLenders();
@@ -155,19 +173,72 @@ export function Lenders() {
     }
   };
 
+  const handleMatchLenders = async () => {
+    setFilterOpen(false);
+    try {
+      const { data } = await axios.get(`${API}/lenders?page=1&limit=1000`, { withCredentials: true });
+      const allLenders = data.lenders;
+
+      const loan = parseFloat(filterForm.loanAmount);
+      const prop = parseFloat(filterForm.propertyValue);
+      const ltv = loan && prop && prop > 0 ? (loan / prop) * 100 : null;
+
+      const noFilters =
+        !filterForm.loanAmount &&
+        !filterForm.propertyValue &&
+        filterForm.employmentType === 'All' &&
+        filterForm.creditProfile === 'All';
+
+      const matched = allLenders.filter((l) => {
+        if (loan) {
+          if (l.min_loan && loan < l.min_loan) return false;
+          if (l.max_loan && loan > l.max_loan) return false;
+        }
+        if (ltv !== null && l.max_ltv && ltv > l.max_ltv) return false;
+        if (filterForm.employmentType === 'Self-Employed' && !l.accepts_self_employed) return false;
+        if (filterForm.employmentType === 'Contractor' && !l.accepts_contractors) return false;
+        if (filterForm.creditProfile === 'Adverse' && !l.accepts_adverse) return false;
+        return true;
+      });
+
+      matched.sort((a, b) => (b.proc_fee_purchase || 0) - (a.proc_fee_purchase || 0));
+
+      setFilteredLenders(matched);
+      setMatchResult({ count: matched.length, noFilters });
+    } catch {
+      toast.error('Failed to load lenders for matching');
+    }
+  };
+
+  const handleClearClose = () => {
+    setFilterForm({ loanAmount: '', propertyValue: '', employmentType: 'All', creditProfile: 'All' });
+    setFilteredLenders(null);
+    setMatchResult(null);
+    setFilterOpen(false);
+  };
+
   const totalPages = Math.ceil(total / 20);
 
   return (
     <div data-testid="lenders-page">
       <div className="page-header">
         <h1>Lender Panel</h1>
-        <Button
-          onClick={() => openDialog()}
-          className="bg-[#0E9F6E] hover:bg-[#0d8a5f] text-white"
-          data-testid="add-lender-btn"
-        >
-          Add Lender
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => setFilterOpen(true)}
+            className="bg-[#0E9F6E] hover:bg-[#0d8a5f] text-white"
+            data-testid="find-lender-btn"
+          >
+            Find a Lender
+          </Button>
+          <Button
+            onClick={() => openDialog()}
+            className="bg-[#0A2342] hover:bg-[#0d1f38] text-white"
+            data-testid="add-lender-btn"
+          >
+            Add Lender
+          </Button>
+        </div>
       </div>
 
       {/* Search */}
@@ -181,6 +252,35 @@ export function Lenders() {
           data-testid="search-input"
         />
       </div>
+
+      {/* Match result pill */}
+      {matchResult !== null && (
+        <div className="flex items-center gap-3 mb-3" data-testid="match-result-pill">
+          <span
+            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+              matchResult.noFilters
+                ? 'bg-[#F3F4F6] text-[#6B7280]'
+                : matchResult.count > 0
+                ? 'bg-[#0E9F6E]/10 text-[#0E9F6E]'
+                : 'bg-[#FEE2E2] text-[#DC2626]'
+            }`}
+            data-testid="match-result-count"
+          >
+            {matchResult.noFilters
+              ? `${matchResult.count} lenders — no filters applied`
+              : matchResult.count > 0
+              ? `${matchResult.count} lenders matched your criteria`
+              : 'No lenders matched your criteria'}
+          </span>
+          <button
+            onClick={() => { setFilteredLenders(null); setMatchResult(null); }}
+            className="text-xs text-[#6B7280] hover:underline"
+            data-testid="clear-filter-link"
+          >
+            Clear filter
+          </button>
+        </div>
+      )}
 
       {/* Table */}
       <div className="card p-0 overflow-hidden">
@@ -209,7 +309,7 @@ export function Lenders() {
                   <td className="px-4 py-3"><Skeleton className="h-4 w-20 ml-auto" /></td>
                 </tr>
               ))
-            ) : lenders.length === 0 ? (
+            ) : (filteredLenders !== null ? filteredLenders : lenders).length === 0 ? (
               <tr>
                 <td colSpan={7}>
                   <div className="empty-state">
@@ -226,7 +326,7 @@ export function Lenders() {
                 </td>
               </tr>
             ) : (
-              lenders.map((lender) => (
+              (filteredLenders !== null ? filteredLenders : lenders).map((lender) => (
                 <tr key={lender.id} className="table-row" data-testid={`lender-row-${lender.id}`}>
                   <td className="px-4 py-3 font-medium text-[#111827]">{lender.name}</td>
                   <td className="px-4 py-3">
@@ -283,8 +383,8 @@ export function Lenders() {
         </table>
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
+      {/* Pagination — hidden when filter is active */}
+      {filteredLenders === null && totalPages > 1 && (
         <div className="flex justify-between items-center mt-4">
           <span className="text-sm text-[#6B7280]">
             Showing {((page - 1) * 20) + 1} to {Math.min(page * 20, total)} of {total} lenders
@@ -299,6 +399,128 @@ export function Lenders() {
           </div>
         </div>
       )}
+
+      {/* Filter Panel Backdrop */}
+      {filterOpen && (
+        <div
+          className="fixed inset-0 z-40"
+          style={{ background: 'rgba(0,0,0,0.2)' }}
+          onClick={() => setFilterOpen(false)}
+          data-testid="filter-backdrop"
+        />
+      )}
+
+      {/* Filter Panel — slides in from the right */}
+      <div
+        className="fixed right-0 top-0 h-full bg-white flex flex-col z-50"
+        style={{
+          width: '320px',
+          borderLeft: '1px solid #D1D5DB',
+          transform: filterOpen ? 'translateX(0)' : 'translateX(100%)',
+          transition: 'transform 0.3s ease',
+        }}
+        data-testid="filter-panel"
+      >
+        {/* Panel Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#E5E7EB]">
+          <h2 className="text-[#111827] font-semibold text-sm">Find a Lender</h2>
+          <button
+            onClick={() => setFilterOpen(false)}
+            className="text-[#6B7280] hover:text-[#111827] text-xl leading-none"
+            data-testid="filter-panel-close"
+            aria-label="Close filter panel"
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Panel Form */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          <div>
+            <label className="form-label">Loan Amount (£)</label>
+            <Input
+              type="number"
+              min="0"
+              step="1"
+              value={filterForm.loanAmount}
+              onChange={(e) => setFilterForm((f) => ({ ...f, loanAmount: e.target.value }))}
+              placeholder="e.g. 250000"
+              className="form-input"
+              data-testid="filter-loan-amount"
+            />
+          </div>
+
+          <div>
+            <label className="form-label">Property Value (£)</label>
+            <Input
+              type="number"
+              min="0"
+              step="1"
+              value={filterForm.propertyValue}
+              onChange={(e) => setFilterForm((f) => ({ ...f, propertyValue: e.target.value }))}
+              placeholder="e.g. 320000"
+              className="form-input"
+              data-testid="filter-property-value"
+            />
+          </div>
+
+          {/* Real-time LTV */}
+          <p className="text-sm font-medium text-[#0E9F6E]" data-testid="filter-ltv-display">
+            {computedLTV ? `LTV: ${computedLTV}%` : 'LTV: —'}
+          </p>
+
+          <div>
+            <label className="form-label">Employment Type</label>
+            <select
+              value={filterForm.employmentType}
+              onChange={(e) => setFilterForm((f) => ({ ...f, employmentType: e.target.value }))}
+              className="form-input w-full"
+              data-testid="filter-employment-type"
+            >
+              <option value="All">All</option>
+              <option value="Employed">Employed</option>
+              <option value="Self-Employed">Self-Employed</option>
+              <option value="Contractor">Contractor</option>
+              <option value="Retired">Retired</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="form-label">Credit Profile</label>
+            <select
+              value={filterForm.creditProfile}
+              onChange={(e) => setFilterForm((f) => ({ ...f, creditProfile: e.target.value }))}
+              className="form-input w-full"
+              data-testid="filter-credit-profile"
+            >
+              <option value="All">All</option>
+              <option value="Clean">Clean</option>
+              <option value="Minor Issues">Minor Issues</option>
+              <option value="Adverse">Adverse</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Panel Footer */}
+        <div className="p-4 border-t border-[#E5E7EB] space-y-3">
+          <Button
+            onClick={handleMatchLenders}
+            className="w-full bg-[#0E9F6E] hover:bg-[#0d8a5f] text-white"
+            data-testid="match-lenders-btn"
+          >
+            Match Lenders
+          </Button>
+          <div className="text-center">
+            <button
+              onClick={handleClearClose}
+              className="text-sm text-[#6B7280] hover:text-[#111827] hover:underline"
+              data-testid="clear-close-btn"
+            >
+              Clear &amp; Close
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

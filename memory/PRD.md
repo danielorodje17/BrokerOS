@@ -106,7 +106,7 @@ All P0 features delivered in MVP.
 
 ## Test Credentials
 - Admin: admin@brokeros.com / Admin123!
-- API Base URL: https://commission-track-28.preview.emergentagent.com/api
+- API Base URL: https://broker-dash-9.preview.emergentagent.com/api
 - Test Case ID: 09ecdc6c-828e-4134-b316-9c112ccd2848
 
 ## New Features (Phase 1 Extension)

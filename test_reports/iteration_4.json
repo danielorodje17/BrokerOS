@@ -1,0 +1,50 @@
+{
+  "summary": "BrokerOS Phase 1 Ext 5 + Login Toast tested. Found and fixed a critical bug in Login.js where commission reminder toast never fired due to wrong API response data path (data.overdue vs data.data.overdue). After fix, all toast tests pass. Lender filter panel (Find a Lender) is fully functional with all specified features. One design issue identified: 'Clear & Close' button is visually blocked by the Emergent preview badge (z-index:9999) at 1080px viewport but the button IS functional (confirmed via JS dispatch).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Lenders - Filter Panel Footer (Clear & Close)",
+        "issue": "The 'Clear & Close' button in the filter panel footer is visually blocked by the 'Made with Emergent' badge (z-index:9999) at 1080px viewport height. The badge rect (x=1726, y=1024, w=178, h=40) fully overlaps the button (x=1717, y=1044, w=87, h=20). Confirmed via elementFromPoint. The button IS functional (verified via JS dispatch) but a real user at 1080px cannot click it. Fix: increase filter panel z-index above 9999 (currently z-50), OR add pointer-events:none to badge, OR adjust panel footer positioning.",
+        "selector": "[data-testid='clear-close-btn']",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Lenders - Filter Panel",
+        "issues": [
+          "'Clear & Close' button at panel bottom-right is obscured by Emergent badge (z-index:9999) at 1080px resolution. Panel uses z-50 which is lower than badge's z-index 9999. Recommend increasing filter panel z-index or adjusting badge pointer-events."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Increase filter panel z-index above 9999 to ensure 'Clear & Close' button is clickable above the Emergent badge at all viewport heights. Current panel z-index is z-50 (50), badge is 9999.",
+    "Note: Commission reminder toast bug was FIXED in this iteration (Login.js data path corrected)"
+  ],
+  "critical_code_review_comments": [
+    "FIXED in this iteration: Login.js lines 33-37: axios .then({data}) destructures the HTTP response body (which is {success, data:{overdue,due_soon}}). Code was accessing data.overdue instead of data.data.overdue, causing overdueCount=0 and dueSoonCount=0 always, silently skipping the toast. Fixed to const reminders = data.data; then reminders?.overdue/.due_soon.",
+    "Filter panel z-index (z-50 = 50) is lower than the Emergent preview badge (z-index: 9999). This causes the 'Clear & Close' button to be blocked. Fix: add style={{zIndex: 10000}} to the filter panel wrapper to ensure it sits above the badge.",
+    "handleMatchLenders in Lenders.js makes a full API call (?page=1&limit=1000) on every Match Lenders click to fetch ALL lenders for client-side filtering. With large datasets this is inefficient; consider server-side filtering endpoint.",
+    "The Toaster component in Layout.js uses duration={4000} as default but toast.custom() in Login.js overrides to 6000. This is correct and intentional."
+  ],
+  "updated_files": [
+    "/app/frontend/src/pages/Login.js"
+  ],
+  "success_rate": {
+    "backend": "N/A (frontend-only test)",
+    "frontend": "95% (24/25 tested requirements pass; 1 design issue with Clear & Close button z-index in preview environment)"
+  },
+  "test_credentials": "admin@brokeros.com / Admin123! (verified working)",
+  "seed_data_creation": "Added TEST_FilterLender_SE lender (accepts_self_employed=true, accepts_adverse=true, proc_fee_purchase=0.45, max_ltv=90, loan range 50000-500000) for filter testing. Not cleaned up - still exists in DB. Can be deleted via Edit/Delete on Lenders page.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Ext 5 (Lender Filter Panel) and Login Commission Toast are implemented. Toast was broken due to wrong data path (FIXED in Login.js). Lender filter works: SE filter, Adverse filter, LTV calc, results pill (teal=matches, red=none, grey=no filters), clear filter, Match Lenders. Key issue: filter panel z-index (z-50=50) is less than Emergent badge (z-index:9999), making 'Clear & Close' button unclickable at 1080px viewport. TEST_FilterLender_SE was added during testing and should be cleaned up. All Commission Reminder and Pipeline features from iterations 1-3 still working.",
+  "rca_of_the_issue": "Commission Reminder Toast Bug: In Login.js, axios.get returns a response object where .data is the HTTP response body: {success:true, data:{overdue:[],due_soon:[]}}. Code incorrectly accessed data.overdue and data.due_soon (which are undefined, returning length 0 via nullish coalescing). Correct path is data.data.overdue and data.data.due_soon. This caused the early return condition (overdueCount===0 && dueSoonCount===0) to always trigger, suppressing the toast entirely. Fix applied: added const reminders = data.data; and then used reminders?.overdue?.length and reminders?.due_soon?.length. Clear & Close Blocked: Emergent badge is position:fixed, z-index:9999, bottom:16px, right:16px, size 178x40px. Filter panel footer 'Clear & Close' button is inside panel (z-50=50), positioned in the bottom-right corner. At 1080px height the button's center (x=1760, y=1054) falls exactly within the badge's bounding box (x=1726-1904, y=1024-1064). elementFromPoint confirms the badge intercepts all clicks at that position."
+}

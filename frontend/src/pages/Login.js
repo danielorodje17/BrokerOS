@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import axios from 'axios';
+import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
+
+const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 export function Login() {
   const [email, setEmail] = useState('');
@@ -25,6 +29,52 @@ export function Login() {
 
     if (result.success) {
       navigate(from, { replace: true });
+      // Background: fire reminders check — must not block navigation
+      axios.get(`${API}/commissions/reminders`, { withCredentials: true })
+        .then(({ data }) => {
+          const reminders = data.data;
+          const overdueCount = reminders?.overdue?.length ?? 0;
+          const dueSoonCount = reminders?.due_soon?.length ?? 0;
+          if (overdueCount === 0 && dueSoonCount === 0) return;
+
+          let message;
+          if (overdueCount > 0 && dueSoonCount > 0) {
+            message = `💰 ${overdueCount} commission(s) overdue · ${dueSoonCount} due this week — check Commission Tracker`;
+          } else if (overdueCount > 0) {
+            message = `⚠️ ${overdueCount} commission(s) overdue — check Commission Tracker`;
+          } else {
+            message = `📅 ${dueSoonCount} commission(s) due this week — check Commission Tracker`;
+          }
+
+          toast.custom(
+            (t) => (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => { toast.dismiss(t); navigate('/commissions'); }}
+                onKeyDown={(e) => e.key === 'Enter' && navigate('/commissions')}
+                style={{
+                  cursor: 'pointer',
+                  background: '#0A2342',
+                  color: 'white',
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  borderLeft: '4px solid #0E9F6E',
+                  fontSize: '14px',
+                  lineHeight: '1.5',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                  minWidth: '300px',
+                  maxWidth: '420px',
+                }}
+                data-testid="commission-reminder-toast"
+              >
+                {message}
+              </div>
+            ),
+            { duration: 6000, position: 'top-right' }
+          );
+        })
+        .catch(() => {}); // Silently fail — reminders are non-critical
     } else {
       setError(result.error);
     }
