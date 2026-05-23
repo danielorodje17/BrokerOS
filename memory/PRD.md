@@ -134,30 +134,32 @@ All P0 features delivered in MVP.
 - **Pipeline.js**: Added Kanban/List view toggle. Search bar visible ONLY in List view; client-side, real-time, case-insensitive; matches client first/last/full name and lender name. Empty-state with "Clear search" button.
 - **Commissions.js**: Search now matches client name, lender name, AND invoice_number (INV-YYYY-NNNN). Placeholder updated to "Search by client, lender or invoice #...".
 
-### Login Commission Summary Toast (23 May 2026)
-- **Trigger**: Fires after every successful login, non-blocking (does not delay redirect)
-- **Endpoint**: GET /api/commissions/reminders (response: {success, data:{overdue[], due_soon[]}})
-- **Toast**: Sonner toast.custom() with navy bg (#0A2342) + teal left border (#0E9F6E), 6s duration, top-right position
-- **Formats**: both overdue+due_soon / only overdue / only due_soon / silent (nothing shown if both empty)
-- **Click**: Navigates to /commissions and dismisses toast
-- **File**: /app/frontend/src/pages/Login.js
+### Atomic Invoice Sequence (23 May 2026)
+- Replaced multi-step find/insert/update with atomic `find_one_and_update($inc, upsert=True)` via `pymongo.ReturnDocument.AFTER`
+- Year-rollover handled by preceding `update_one($set: {last_number: 0})` when year field mismatches, then the increment gives 1
+- No change to INV-YYYY-NNNN format or existing data
 
-### Extension 5: Manual Lender Match Filter (23 May 2026)
-- **Location**: Lenders page (/lenders) — client-side filtering, no new backend endpoints
-- **UI**: "Find a Lender" teal button added next to "Add Lender" (now navy)
-- **Panel**: 320px right-side slide-in overlay, z-index: 10000 (above Emergent badge at 9999), 20% opacity backdrop
-- **Inputs**: Loan Amount (£), Property Value (£), real-time LTV (teal, 1 decimal), Employment Type dropdown, Credit Profile dropdown
-- **Filtering Logic**: loan range (min_loan ≤ amount ≤ max_loan), max_ltv ≥ computed LTV, SE/Contractor/Adverse flags
-- **Sort**: Matched results sorted by proc_fee_purchase descending
-- **Results Pill**: teal (matches), red (none), grey (no filters); "Clear filter" link resets table
-- **Clear & Close**: Resets all inputs and restores full paginated table
-- **Pagination**: Hidden when filter is active
+### Dashboard Commission Alerts Widget (23 May 2026)
+- Compact bar below stats grid: shows red dot (overdue), amber dot (due this week, 14-day window), amber dot (clawback risk active)
+- Each alert is a clickable link to `/commissions`; entire widget hidden when all counts are zero
+- Counts computed in `/api/dashboard/stats` alongside existing pipeline/commission data
+
+### Dashboard Recent Cases Table (23 May 2026)
+- Shows 5 most recently created cases: Client name, Stage badge, Lender, Loan Amount
+- `View all` link navigates to `/cases`
+- Backend: enriched with client/lender info via per-case lookups in `dashboard.py`
+
+### Extension 6: Clawback Risk Tab (23 May 2026)
+- New `Clawback Risk` tab on Commission Tracker page (amber/orange indicator)
+- Backend: `GET /api/commissions/clawback-risk` — returns commissions where `clawback_risk_until > today`, sorted by date asc, enriched with client/lender/days_remaining
+- Days Remaining colour-coded: red ≤30, amber ≤90, green >90
+- Count badge on tab when items exist; empty state message when none
+- All existing CRUD unaffected; clawback list refreshes on commission add/edit/delete
 
 ## Next Tasks (Open Backlog)
-1. Set up EMERGENT_LLM_KEY for document storage (P1)
+1. Document storage with Emergent Object Storage (P1)
 2. Email notifications for commission due dates (P1)
-3. Make invoice sequence atomic (use findOneAndUpdate with $inc + upsert to avoid race conditions in concurrent invoice generation)
-4. Server-side search on Commissions & Pipeline (currently client-side, only filters current page of paginated results)
-5. Reduce N+1 queries in /api/commissions/reminders via $lookup or batched $in queries
-6. Phase 2 AI features (lender matching, OCR auto-fill, rate comparison)
+3. Server-side search on Commissions & Pipeline (currently client-side, only filters current page)
+4. Reduce N+1 queries in reminders/clawback endpoints via $lookup or batched $in queries
+5. Phase 2 AI features (lender matching, OCR auto-fill, rate comparison)
 
