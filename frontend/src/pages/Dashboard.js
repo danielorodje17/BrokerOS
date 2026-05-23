@@ -91,6 +91,50 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* Commission Alerts */}
+      {!loading && stats?.alerts && (
+        stats.alerts.overdue_count > 0 ||
+        stats.alerts.due_soon_count > 0 ||
+        stats.alerts.clawback_risk_count > 0
+      ) && (
+        <div
+          className="card mt-6 flex items-center flex-wrap gap-5 py-3"
+          data-testid="commission-alerts-widget"
+        >
+          <span className="text-sm font-semibold text-[#111827]">Commission Alerts</span>
+          {stats.alerts.overdue_count > 0 && (
+            <a
+              href="/commissions"
+              className="flex items-center gap-1.5 text-sm text-[#EF4444] hover:underline"
+              data-testid="alert-overdue"
+            >
+              <span className="w-2 h-2 rounded-full bg-[#EF4444] inline-block" />
+              {stats.alerts.overdue_count} overdue
+            </a>
+          )}
+          {stats.alerts.due_soon_count > 0 && (
+            <a
+              href="/commissions"
+              className="flex items-center gap-1.5 text-sm text-[#F59E0B] hover:underline"
+              data-testid="alert-due-soon"
+            >
+              <span className="w-2 h-2 rounded-full bg-[#F59E0B] inline-block" />
+              {stats.alerts.due_soon_count} due this week
+            </a>
+          )}
+          {stats.alerts.clawback_risk_count > 0 && (
+            <a
+              href="/commissions"
+              className="flex items-center gap-1.5 text-sm text-[#D97706] hover:underline"
+              data-testid="alert-clawback"
+            >
+              <span className="w-2 h-2 rounded-full bg-[#D97706] inline-block" />
+              {stats.alerts.clawback_risk_count} clawback risk
+            </a>
+          )}
+        </div>
+      )}
+
       {/* Pipeline Overview */}
       <div className="card mt-6">
         <h2 className="text-lg font-semibold text-[#111827] mb-6">Pipeline Overview</h2>
@@ -128,6 +172,38 @@ export function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Recent Cases */}
+      {!loading && stats?.recent_cases?.length > 0 && (
+        <div className="card mt-6" data-testid="recent-cases-section">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-[#111827]">Recent Cases</h2>
+            <a href="/cases" className="text-sm text-[#0E9F6E] hover:underline">View all</a>
+          </div>
+          <table className="w-full">
+            <thead>
+              <tr className="table-header">
+                <th className="text-left px-4 py-2 text-xs">Client</th>
+                <th className="text-left px-4 py-2 text-xs">Stage</th>
+                <th className="text-left px-4 py-2 text-xs">Lender</th>
+                <th className="text-right px-4 py-2 text-xs">Loan Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stats.recent_cases.map((c) => (
+                <tr key={c.id} className="table-row" data-testid={`recent-case-${c.id}`}>
+                  <td className="px-4 py-2 text-sm font-medium text-[#111827]">{c.client_name}</td>
+                  <td className="px-4 py-2">
+                    <span className="badge badge-blue text-xs">{stageLabels[c.stage] || c.stage}</span>
+                  </td>
+                  <td className="px-4 py-2 text-sm text-[#6B7280]">{c.lender_name}</td>
+                  <td className="px-4 py-2 text-sm text-[#111827] text-right">{formatCurrency(c.loan_amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">

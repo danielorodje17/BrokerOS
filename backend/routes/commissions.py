@@ -8,6 +8,7 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from typing import Optional
 import uuid
 from datetime import datetime, timezone, timedelta
+from pymongo import ReturnDocument
 
 from .deps import db, get_current_user
 from .models import CommissionCreate
@@ -96,6 +97,42 @@ async def get_commission_reminders(user: dict = Depends(get_current_user)):
             "overdue": overdue
         }
     }
+
+
+@router.get("/clawback-risk")
+async def list_clawback_risk_commissions(user: dict = Depends(get_current_user)):
+    """Commissions with an active clawback risk window (clawback_risk_until is in the future)."""
+    today = datetime.now(timezone.utc).date()
+    today_str = today.isoformat()
+
+    query = {
+        "user_id": user["id"],
+        "clawback_risk_until": {"$ne": None, "$gt": today_str}
+    }
+    commissions = await db.commission_records.find(query, {"_id": 0}).sort("clawback_risk_until", 1).to_list(200)
+
+    for comm in commissions:
+        case = await db.cases.find_one(
+            {"id": comm.get("case_id")},
+            {"_id": 0, "client_id": 1, "lender_id": 1, "loan_amount": 1}
+        )
+        if case:
+            client = await db.clients.find_one({"id": case.get("client_id")}, {"_id": 0, "first_name": 1, "last_name": 1})
+            lender = await db.lenders.find_one({"id": case.get("lender_id")}, {"_id": 0, "name": 1})
+            comm["client_name"] = f"{client['first_name']} {client['last_name']}" if client else "Unknown"
+            comm["lender_name"] = lender.get("name") if lender else "-"
+            comm["loan_amount"] = case.get("loan_amount")
+
+        risk_date_str = comm.get("clawback_risk_until")
+        try:
+            risk_date = datetime.strptime(str(risk_date_str), "%Y-%m-%d").date()
+            comm["days_remaining"] = (risk_date - today).days
+            comm["clawback_risk_until_formatted"] = risk_date.strftime("%d/%m/%Y")
+        except (ValueError, TypeError):
+            comm["days_remaining"] = None
+            comm["clawback_risk_until_formatted"] = risk_date_str or "-"
+
+    return {"commissions": commissions, "total": len(commissions)}
 
 
 @router.get("")
@@ -319,31 +356,27 @@ async def generate_commission_invoice(commission_id: str, user: dict = Depends(g
     lender = await db.lenders.find_one({"id": case.get("lender_id")}, {"_id": 0})
     lender_name = lender.get("name") if lender else "Unknown Lender"
 
-    # Get or create invoice sequence for this broker
-    sequence = await db.invoice_sequences.find_one({"user_id": user["id"]})
+    # ── Atomic invoice sequence ─────────────────────────────────────────────
+    # Guarantees no duplicate numbers even under concurrent requests.
     current_year = datetime.now(timezone.utc).year
 
-    if sequence:
-        if sequence.get("year") != current_year:
-            # Reset sequence for new year
-            next_num = 1
-            await db.invoice_sequences.update_one(
-                {"user_id": user["id"]},
-                {"$set": {"year": current_year, "last_number": 1}}
-            )
-        else:
-            next_num = sequence.get("last_number", 0) + 1
-            await db.invoice_sequences.update_one(
-                {"user_id": user["id"]},
-                {"$set": {"last_number": next_num}}
-            )
-    else:
-        next_num = 1
-        await db.invoice_sequences.insert_one({
-            "user_id": user["id"],
-            "year": current_year,
-            "last_number": 1
-        })
+    # If the stored year has rolled over, reset the counter to 0 atomically
+    # so the first increment of the new year gives last_number = 1.
+    await db.invoice_sequences.update_one(
+        {"user_id": user["id"], "year": {"$ne": current_year}},
+        {"$set": {"year": current_year, "last_number": 0}}
+    )
+
+    # Atomically increment. upsert=True handles brokers generating their
+    # very first invoice (creates the document with last_number = 0+1 = 1).
+    seq_doc = await db.invoice_sequences.find_one_and_update(
+        {"user_id": user["id"]},
+        {"$inc": {"last_number": 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER
+    )
+    next_num = seq_doc["last_number"]
+    # ────────────────────────────────────────────────────────────────────────
 
     invoice_number = f"INV-{current_year}-{next_num:04d}"
 

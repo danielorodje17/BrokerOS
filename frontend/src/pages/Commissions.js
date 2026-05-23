@@ -64,6 +64,11 @@ export function Commissions() {
   const [saving, setSaving] = useState(false);
   const [generatingInvoice, setGeneratingInvoice] = useState(null);
 
+  // Clawback Risk tab
+  const [activeTab, setActiveTab] = useState('all');
+  const [clawbackData, setClawbackData] = useState([]);
+  const [clawbackLoading, setClawbackLoading] = useState(false);
+
   // Summary stats
   const [summary, setSummary] = useState({ pending: 0, received: 0 });
 
@@ -76,6 +81,23 @@ export function Commissions() {
   useEffect(() => {
     fetchData();
   }, [page, statusFilter]);
+
+  // Fetch clawback data once on mount (for tab badge) and after mutations
+  useEffect(() => {
+    fetchClawbackRisk();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fetchClawbackRisk = async () => {
+    setClawbackLoading(true);
+    try {
+      const { data } = await axios.get(`${API}/commissions/clawback-risk`, { withCredentials: true });
+      setClawbackData(data.commissions || []);
+    } catch {
+      // Non-critical — silently ignore
+    } finally {
+      setClawbackLoading(false);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -171,6 +193,7 @@ export function Commissions() {
       }
       setDialogOpen(false);
       fetchData();
+      fetchClawbackRisk();
     } catch (error) {
       toast.error(editingCommission ? 'Failed to update commission' : 'Failed to add commission');
     } finally {
@@ -184,6 +207,7 @@ export function Commissions() {
       await axios.delete(`${API}/commissions/${commissionId}`, { withCredentials: true });
       toast.success('Commission deleted');
       fetchData();
+      fetchClawbackRisk();
     } catch (error) {
       toast.error('Failed to delete commission');
     }
@@ -250,7 +274,36 @@ export function Commissions() {
         </Button>
       </div>
 
-      {/* Summary Cards */}
+      {/* Tab Navigation */}
+      <div className="flex gap-0 mb-6 border-b border-[#E5E7EB]" data-testid="commission-tabs">
+        <button
+          onClick={() => setActiveTab('all')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === 'all'
+              ? 'border-[#0E9F6E] text-[#0E9F6E]'
+              : 'border-transparent text-[#6B7280] hover:text-[#111827]'
+          }`}
+          data-testid="tab-all-commissions"
+        >
+          All Commissions
+        </button>
+        <button
+          onClick={() => setActiveTab('clawback')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-2 ${
+            activeTab === 'clawback'
+              ? 'border-[#D97706] text-[#D97706]'
+              : 'border-transparent text-[#6B7280] hover:text-[#111827]'
+          }`}
+          data-testid="tab-clawback-risk"
+        >
+          Clawback Risk
+          {clawbackData.length > 0 && (
+            <span className="bg-[#FEF3C7] text-[#D97706] text-xs px-1.5 py-0.5 rounded-full font-medium">
+              {clawbackData.length}
+            </span>
+          )}
+        </button>
+      </div>
       <div className="grid grid-cols-2 gap-6 mb-6">
         <div className="card">
           <div className="stat-card-label">Pending / Invoiced</div>
@@ -263,7 +316,7 @@ export function Commissions() {
       </div>
 
       {/* Reminders Banner */}
-      {hasReminders && (
+      {activeTab === 'all' && hasReminders && (
         <div className="mb-6 relative" data-testid="reminders-banner">
           {/* Dismiss button */}
           <button
@@ -331,7 +384,8 @@ export function Commissions() {
         </div>
       )}
 
-      {/* Filter and Search */}
+      {/* Filter and Search — All Commissions tab only */}
+      {activeTab === 'all' && (
       <div className="flex gap-4 mb-6">
         <Input
           type="text"
@@ -353,8 +407,10 @@ export function Commissions() {
           </SelectContent>
         </Select>
       </div>
+      )}
 
-      {/* Table */}
+      {/* Table — All Commissions */}
+      {activeTab === 'all' && (
       <div className="card p-0 overflow-hidden" ref={tableRef}>
         <table className="w-full">
           <thead>
@@ -477,9 +533,10 @@ export function Commissions() {
           </tbody>
         </table>
       </div>
+      )}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
+      {/* Pagination — All Commissions only */}
+      {activeTab === 'all' && totalPages > 1 && (
         <div className="flex justify-between items-center mt-4">
           <span className="text-sm text-[#6B7280]">
             Showing {((page - 1) * 20) + 1} to {Math.min(page * 20, total)} of {total} records
@@ -492,6 +549,70 @@ export function Commissions() {
               Next
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* Clawback Risk Table */}
+      {activeTab === 'clawback' && (
+        <div className="card p-0 overflow-hidden" data-testid="clawback-table">
+          <table className="w-full">
+            <thead>
+              <tr className="table-header">
+                <th className="text-left px-4 py-3">Client</th>
+                <th className="text-left px-4 py-3">Lender</th>
+                <th className="text-left px-4 py-3">Received</th>
+                <th className="text-left px-4 py-3">Clawback Risk Until</th>
+                <th className="text-left px-4 py-3">Days Remaining</th>
+                <th className="text-left px-4 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {clawbackLoading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <tr key={i} className="table-row">
+                    {Array.from({ length: 6 }).map((__, j) => (
+                      <td key={j} className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
+                    ))}
+                  </tr>
+                ))
+              ) : clawbackData.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>
+                    <div className="empty-state">
+                      <h3>No active clawback risks</h3>
+                      <p>Commissions with a future clawback risk date will appear here</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                clawbackData.map((comm) => {
+                  const daysRemaining = comm.days_remaining;
+                  const daysColor =
+                    daysRemaining === null ? 'text-[#6B7280]'
+                    : daysRemaining <= 30 ? 'text-[#EF4444] font-medium'
+                    : daysRemaining <= 90 ? 'text-[#F59E0B] font-medium'
+                    : 'text-[#16A34A]';
+                  const statusInfo = getStatusInfo(comm.status);
+                  return (
+                    <tr key={comm.id} className="table-row" data-testid={`clawback-row-${comm.id}`}>
+                      <td className="px-4 py-3 font-medium text-[#111827]">{comm.client_name}</td>
+                      <td className="px-4 py-3 text-[#6B7280]">{comm.lender_name || '-'}</td>
+                      <td className="px-4 py-3 text-[#111827]">{formatCurrency(comm.received_amount)}</td>
+                      <td className="px-4 py-3 text-[#111827]">
+                        {comm.clawback_risk_until_formatted || formatDate(comm.clawback_risk_until)}
+                      </td>
+                      <td className={`px-4 py-3 ${daysColor}`}>
+                        {daysRemaining !== null ? `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}` : '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`badge ${statusInfo.badge}`}>{statusInfo.label}</span>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       )}
 
