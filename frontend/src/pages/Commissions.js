@@ -47,6 +47,7 @@ export function Commissions() {
     clawback_risk_until: ''
   });
   const [saving, setSaving] = useState(false);
+  const [generatingInvoice, setGeneratingInvoice] = useState(null);
 
   // Summary stats
   const [summary, setSummary] = useState({ pending: 0, received: 0 });
@@ -152,6 +153,36 @@ export function Commissions() {
   };
 
   const getStatusInfo = (status) => statuses.find(s => s.value === status) || { label: status, badge: 'badge-grey' };
+
+  const handleGenerateInvoice = async (commissionId) => {
+    setGeneratingInvoice(commissionId);
+    try {
+      const response = await axios.get(`${API}/commissions/${commissionId}/invoice`, {
+        withCredentials: true,
+        responseType: 'blob'
+      });
+      
+      // Get invoice number from response header
+      const invoiceNumber = response.headers['x-invoice-number'] || 'invoice';
+      
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${invoiceNumber}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      toast.success(`Invoice ${invoiceNumber} downloaded`);
+    } catch (error) {
+      console.error('Invoice generation error:', error);
+      toast.error('Invoice generation failed — please try again');
+    } finally {
+      setGeneratingInvoice(null);
+    }
+  };
 
   const totalPages = Math.ceil(total / 20);
 
@@ -261,6 +292,21 @@ export function Commissions() {
                       <span className={`badge ${statusInfo.badge}`}>{statusInfo.label}</span>
                     </td>
                     <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => handleGenerateInvoice(commission.id)}
+                        disabled={generatingInvoice === commission.id}
+                        className="text-[#0A2342] hover:underline text-sm mr-3 disabled:opacity-50"
+                        data-testid={`generate-invoice-${commission.id}`}
+                      >
+                        {generatingInvoice === commission.id ? (
+                          <span className="inline-flex items-center">
+                            <span className="loading-spinner mr-1 w-3 h-3"></span>
+                            Generating...
+                          </span>
+                        ) : (
+                          'Generate Invoice'
+                        )}
+                      </button>
                       <button
                         onClick={() => openDialog(commission)}
                         className="text-[#0E9F6E] hover:underline text-sm mr-3"

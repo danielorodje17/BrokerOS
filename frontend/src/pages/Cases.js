@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { Input } from '../components/ui/input';
@@ -282,6 +283,13 @@ export function Cases() {
                     <td className="px-4 py-3 text-[#111827]">{caseItem.ltv ? `${caseItem.ltv}%` : '-'}</td>
                     <td className="px-4 py-3 text-[#6B7280]">{caseItem.lender_name || '-'}</td>
                     <td className="px-4 py-3 text-right">
+                      <Link
+                        to={`/cases/${caseItem.id}`}
+                        className="text-[#0E9F6E] hover:underline text-sm mr-3"
+                        data-testid={`view-case-${caseItem.id}`}
+                      >
+                        View
+                      </Link>
                       <button
                         onClick={() => openDialog(caseItem)}
                         className="text-[#0E9F6E] hover:underline text-sm mr-3"

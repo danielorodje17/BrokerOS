@@ -10,6 +10,7 @@ import { Onboarding } from './pages/Onboarding';
 import { Dashboard } from './pages/Dashboard';
 import { Clients } from './pages/Clients';
 import { Cases } from './pages/Cases';
+import { CaseDetail } from './pages/CaseDetail';
 import { Pipeline } from './pages/Pipeline';
 import { Lenders } from './pages/Lenders';
 import { Commissions } from './pages/Commissions';
@@ -56,6 +57,7 @@ function App() {
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="clients" element={<Clients />} />
             <Route path="cases" element={<Cases />} />
+            <Route path="cases/:caseId" element={<CaseDetail />} />
             <Route path="pipeline" element={<Pipeline />} />
             <Route path="lenders" element={<Lenders />} />
             <Route path="commissions" element={<Commissions />} />

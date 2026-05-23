@@ -257,6 +257,99 @@ class TestSettings:
         assert r.status_code == 400
 
 
+# ---------- Notes Timeline (Phase 1 Extension) ----------
+class TestNotesTimeline:
+    def test_create_note_returns_author_and_timestamp(self, admin_session, created_resources):
+        case_id = created_resources["case_ids"][0]
+        r = admin_session.post(f"{API}/notes", json={"case_id": case_id, "content": "TEST_NOTE_TIMELINE first note"})
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["content"] == "TEST_NOTE_TIMELINE first note"
+        assert "author_name" in data and len(data["author_name"]) > 0
+        assert "created_at" in data
+        assert "id" in data
+        assert "_id" not in data, "Mongo ObjectId leaked into response"
+
+    def test_list_notes_via_query_param(self, admin_session, created_resources):
+        case_id = created_resources["case_ids"][0]
+        r = admin_session.get(f"{API}/notes", params={"case_id": case_id})
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert "notes" in data
+        assert data["total"] >= 1
+        # most recent first
+        assert "created_at" in data["notes"][0]
+
+    def test_notes_sorted_desc(self, admin_session, created_resources):
+        case_id = created_resources["case_ids"][0]
+        admin_session.post(f"{API}/notes", json={"case_id": case_id, "content": "TEST_NOTE_ORDER second"})
+        r = admin_session.get(f"{API}/notes", params={"case_id": case_id})
+        notes = r.json()["notes"]
+        # newest must be at index 0
+        assert notes[0]["created_at"] >= notes[-1]["created_at"]
+
+    def test_note_2000_char_limit_enforced(self, admin_session, created_resources):
+        case_id = created_resources["case_ids"][0]
+        r = admin_session.post(f"{API}/notes", json={"case_id": case_id, "content": "x" * 2001})
+        assert r.status_code in (400, 422), f"Expected validation error got {r.status_code}"
+
+    def test_note_exactly_2000_chars_allowed(self, admin_session, created_resources):
+        case_id = created_resources["case_ids"][0]
+        r = admin_session.post(f"{API}/notes", json={"case_id": case_id, "content": "y" * 2000})
+        assert r.status_code == 200, r.text
+
+    def test_note_invalid_case_returns_404(self, admin_session):
+        r = admin_session.post(f"{API}/notes", json={"case_id": "non-existent-case", "content": "won't save"})
+        assert r.status_code == 404
+
+    def test_notes_unauthenticated_blocked(self, created_resources):
+        case_id = created_resources["case_ids"][0]
+        r = requests.get(f"{API}/notes", params={"case_id": case_id})
+        assert r.status_code == 401
+
+
+# ---------- Invoice PDF Generation (Phase 1 Extension) ----------
+class TestInvoicePDF:
+    def test_generate_invoice_returns_pdf(self, admin_session, created_resources):
+        commission_id = created_resources["commission_ids"][0]
+        r = admin_session.get(f"{API}/commissions/{commission_id}/invoice")
+        assert r.status_code == 200, r.text
+        # Content-type must be PDF
+        assert "application/pdf" in r.headers.get("content-type", ""), r.headers
+        # Body must look like PDF
+        assert r.content[:4] == b"%PDF", "Response body is not a PDF"
+        # Invoice number header
+        inv_no = r.headers.get("x-invoice-number") or r.headers.get("X-Invoice-Number")
+        assert inv_no, f"Missing X-Invoice-Number header. Headers: {dict(r.headers)}"
+        # Format INV-YYYY-NNNN
+        import re
+        assert re.match(r"^INV-\d{4}-\d{4}$", inv_no), f"Invoice number format wrong: {inv_no}"
+        # Content-Disposition includes filename
+        cd = r.headers.get("content-disposition", "")
+        assert ".pdf" in cd
+
+    def test_invoice_sequence_increments(self, admin_session, created_resources):
+        commission_id = created_resources["commission_ids"][0]
+        r1 = admin_session.get(f"{API}/commissions/{commission_id}/invoice")
+        r2 = admin_session.get(f"{API}/commissions/{commission_id}/invoice")
+        n1 = r1.headers.get("x-invoice-number")
+        n2 = r2.headers.get("x-invoice-number")
+        assert n1 and n2
+        # numeric suffix should differ by 1
+        seq1 = int(n1.split("-")[-1])
+        seq2 = int(n2.split("-")[-1])
+        assert seq2 == seq1 + 1, f"Invoice sequence not incrementing: {n1} -> {n2}"
+
+    def test_invoice_invalid_commission_404(self, admin_session):
+        r = admin_session.get(f"{API}/commissions/non-existent-id/invoice")
+        assert r.status_code == 404
+
+    def test_invoice_unauthenticated_blocked(self, created_resources):
+        commission_id = created_resources["commission_ids"][0]
+        r = requests.get(f"{API}/commissions/{commission_id}/invoice")
+        assert r.status_code == 401
+
+
 # ---------- Cleanup ----------
 def test_zzz_cleanup(admin_session, created_resources):
     for cid in created_resources["commission_ids"]:

@@ -2,8 +2,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, File, UploadFile, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.units import mm
+from reportlab.pdfgen import canvas
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import Table, TableStyle
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import os
@@ -206,7 +213,7 @@ class CommissionCreate(BaseModel):
 
 class NoteCreate(BaseModel):
     case_id: str
-    content: str
+    content: str = Field(..., max_length=2000)
 
 class ForgotPassword(BaseModel):
     email: EmailStr
@@ -685,25 +692,256 @@ async def delete_commission(commission_id: str, user: dict = Depends(get_current
         raise HTTPException(status_code=404, detail="Commission not found")
     return {"message": "Commission deleted"}
 
+# ========== INVOICE GENERATION ==========
+def format_currency_pdf(value):
+    """Format currency for PDF display"""
+    if not value:
+        return "£0.00"
+    return f"£{value:,.2f}"
+
+def generate_invoice_pdf(invoice_data: dict) -> BytesIO:
+    """Generate a professional PDF invoice"""
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    
+    # Colors
+    navy = colors.HexColor("#0A2342")
+    grey = colors.HexColor("#6B7280")
+    dark = colors.HexColor("#111827")
+    
+    # Top left: BrokerOS branding
+    c.setFillColor(navy)
+    c.setFont("Helvetica-Bold", 20)
+    c.drawString(40, height - 50, "BrokerOS")
+    c.setFillColor(grey)
+    c.setFont("Helvetica", 10)
+    c.drawString(40, height - 65, "Invoice")
+    
+    # Top right: Invoice details
+    c.setFillColor(dark)
+    c.setFont("Helvetica-Bold", 10)
+    c.drawRightString(width - 40, height - 50, f"Invoice Number: {invoice_data['invoice_number']}")
+    c.setFont("Helvetica", 10)
+    c.drawRightString(width - 40, height - 65, f"Invoice Date: {invoice_data['invoice_date']}")
+    c.drawRightString(width - 40, height - 80, f"Payment Due: {invoice_data['payment_due_date']}")
+    
+    # Divider line
+    c.setStrokeColor(colors.HexColor("#E5E7EB"))
+    c.line(40, height - 100, width - 40, height - 100)
+    
+    # FROM section
+    y_pos = height - 130
+    c.setFillColor(grey)
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(40, y_pos, "FROM")
+    c.setFillColor(dark)
+    c.setFont("Helvetica", 11)
+    y_pos -= 18
+    c.drawString(40, y_pos, invoice_data['broker_name'])
+    y_pos -= 15
+    c.setFont("Helvetica", 10)
+    c.drawString(40, y_pos, f"FCA Number: {invoice_data['fca_number'] or 'N/A'}")
+    
+    # TO section
+    y_pos -= 35
+    c.setFillColor(grey)
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(40, y_pos, "TO")
+    c.setFillColor(dark)
+    c.setFont("Helvetica", 11)
+    y_pos -= 18
+    c.drawString(40, y_pos, invoice_data['lender_name'] or "N/A")
+    
+    # RE section (Case details)
+    y_pos -= 35
+    c.setFillColor(grey)
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(40, y_pos, "RE")
+    c.setFillColor(dark)
+    c.setFont("Helvetica", 11)
+    y_pos -= 18
+    c.drawString(40, y_pos, f"Client: {invoice_data['client_name']}")
+    y_pos -= 15
+    c.setFont("Helvetica", 10)
+    c.drawString(40, y_pos, f"Case Reference: {invoice_data['case_id']}")
+    y_pos -= 15
+    c.drawString(40, y_pos, f"Loan Amount: {format_currency_pdf(invoice_data['loan_amount'])}")
+    
+    # Fee table
+    y_pos -= 50
+    
+    # Table header
+    c.setFillColor(colors.HexColor("#F9FAFB"))
+    c.rect(40, y_pos - 5, width - 80, 25, fill=True, stroke=False)
+    c.setFillColor(grey)
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(50, y_pos + 5, "DESCRIPTION")
+    c.drawRightString(width - 50, y_pos + 5, "AMOUNT")
+    
+    # Table row
+    y_pos -= 35
+    c.setFillColor(dark)
+    c.setFont("Helvetica", 10)
+    c.drawString(50, y_pos, "Mortgage Arrangement / Proc Fee")
+    c.drawRightString(width - 50, y_pos, format_currency_pdf(invoice_data['commission_amount']))
+    
+    # Bottom border
+    c.setStrokeColor(colors.HexColor("#E5E7EB"))
+    c.line(40, y_pos - 15, width - 40, y_pos - 15)
+    
+    # Total row
+    y_pos -= 40
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, y_pos, "Total Due")
+    c.drawRightString(width - 50, y_pos, format_currency_pdf(invoice_data['commission_amount']))
+    
+    # Footer
+    c.setFillColor(grey)
+    c.setFont("Helvetica-Oblique", 9)
+    footer_text = f"This invoice is issued by {invoice_data['broker_name']}, FCA Number {invoice_data['fca_number'] or 'N/A'}. Payment should be made within 30 days of the date of this invoice."
+    
+    # Word wrap footer
+    max_width = width - 80
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    words = footer_text.split()
+    lines = []
+    current_line = ""
+    for word in words:
+        test_line = current_line + " " + word if current_line else word
+        if stringWidth(test_line, "Helvetica-Oblique", 9) < max_width:
+            current_line = test_line
+        else:
+            lines.append(current_line)
+            current_line = word
+    if current_line:
+        lines.append(current_line)
+    
+    y_pos = 80
+    for line in lines:
+        c.drawString(40, y_pos, line)
+        y_pos -= 12
+    
+    c.save()
+    buffer.seek(0)
+    return buffer
+
+@api_router.get("/commissions/{commission_id}/invoice")
+async def generate_commission_invoice(commission_id: str, user: dict = Depends(get_current_user)):
+    """Generate and download a PDF invoice for a commission record"""
+    # Get commission record
+    commission = await db.commission_records.find_one({"id": commission_id, "user_id": user["id"]}, {"_id": 0})
+    if not commission:
+        raise HTTPException(status_code=404, detail="Commission not found")
+    
+    # Get case details
+    case = await db.cases.find_one({"id": commission.get("case_id")}, {"_id": 0})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    # Get client details
+    client = await db.clients.find_one({"id": case.get("client_id")}, {"_id": 0})
+    client_name = f"{client['first_name']} {client['last_name']}" if client else "Unknown Client"
+    
+    # Get lender details
+    lender = await db.lenders.find_one({"id": case.get("lender_id")}, {"_id": 0})
+    lender_name = lender.get("name") if lender else "Unknown Lender"
+    
+    # Get or create invoice sequence for this broker
+    sequence = await db.invoice_sequences.find_one({"user_id": user["id"]})
+    current_year = datetime.now(timezone.utc).year
+    
+    if sequence:
+        if sequence.get("year") != current_year:
+            # Reset sequence for new year
+            next_num = 1
+            await db.invoice_sequences.update_one(
+                {"user_id": user["id"]},
+                {"$set": {"year": current_year, "last_number": 1}}
+            )
+        else:
+            next_num = sequence.get("last_number", 0) + 1
+            await db.invoice_sequences.update_one(
+                {"user_id": user["id"]},
+                {"$set": {"last_number": next_num}}
+            )
+    else:
+        next_num = 1
+        await db.invoice_sequences.insert_one({
+            "user_id": user["id"],
+            "year": current_year,
+            "last_number": 1
+        })
+    
+    invoice_number = f"INV-{current_year}-{next_num:04d}"
+    
+    # Prepare invoice data
+    invoice_data = {
+        "invoice_number": invoice_number,
+        "invoice_date": datetime.now(timezone.utc).strftime("%d/%m/%Y"),
+        "payment_due_date": (datetime.now(timezone.utc) + timedelta(days=30)).strftime("%d/%m/%Y"),
+        "broker_name": f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or user.get('email', 'Broker'),
+        "fca_number": user.get("fca_number"),
+        "lender_name": lender_name,
+        "client_name": client_name,
+        "case_id": case.get("id"),
+        "loan_amount": case.get("loan_amount"),
+        "commission_amount": commission.get("expected_amount", 0)
+    }
+    
+    # Generate PDF
+    pdf_buffer = generate_invoice_pdf(invoice_data)
+    
+    # Return as streaming response
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename={invoice_number}.pdf",
+            "X-Invoice-Number": invoice_number
+        }
+    )
+
 # ========== NOTES ==========
-@api_router.get("/cases/{case_id}/notes")
-async def list_case_notes(case_id: str, user: dict = Depends(get_current_user)):
+@api_router.get("/notes")
+async def list_notes(case_id: str = Query(...), user: dict = Depends(get_current_user)):
+    """Get all notes for a case, sorted by created_at descending"""
     case = await db.cases.find_one({"id": case_id, "assigned_broker_id": user["id"]})
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
-    notes = await db.notes.find({"case_id": case_id}, {"_id": 0}).to_list(100)
-    return {"notes": notes}
+    notes = await db.notes.find({"case_id": case_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return {"notes": notes, "total": len(notes)}
+
+@api_router.get("/cases/{case_id}/notes")
+async def list_case_notes(case_id: str, user: dict = Depends(get_current_user)):
+    """Get all notes for a case, sorted by created_at descending"""
+    case = await db.cases.find_one({"id": case_id, "assigned_broker_id": user["id"]})
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    notes = await db.notes.find({"case_id": case_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return {"notes": notes, "total": len(notes)}
 
 @api_router.post("/notes")
 async def create_note(data: NoteCreate, user: dict = Depends(get_current_user)):
+    """Create a new note (immutable - no edit or delete)"""
     case = await db.cases.find_one({"id": data.case_id, "assigned_broker_id": user["id"]})
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    
+    # Validate content length
+    if len(data.content) > 2000:
+        raise HTTPException(status_code=400, detail="Note content exceeds 2000 characters")
+    
+    # Get author name from user profile
+    author_name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
+    if not author_name:
+        author_name = user.get('email', 'Unknown')
     
     note_doc = {
         "id": str(uuid.uuid4()),
         "case_id": data.case_id,
         "user_id": user["id"],
+        "author_name": author_name,
         "content": data.content,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -840,6 +1078,8 @@ async def startup():
     await db.lenders.create_index("user_id")
     await db.commission_records.create_index("user_id")
     await db.documents.create_index("user_id")
+    await db.notes.create_index([("case_id", 1), ("created_at", -1)])
+    await db.invoice_sequences.create_index("user_id", unique=True)
     
     # Seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@brokeros.com")
@@ -868,17 +1108,17 @@ async def startup():
     os_module = __import__('os')
     os_module.makedirs("/app/memory", exist_ok=True)
     with open("/app/memory/test_credentials.md", "w") as f:
-        f.write(f"# Test Credentials\n\n")
-        f.write(f"## Admin Account\n")
+        f.write("# Test Credentials\n\n")
+        f.write("## Admin Account\n")
         f.write(f"- Email: {admin_email}\n")
         f.write(f"- Password: {admin_password}\n")
-        f.write(f"- Role: admin\n\n")
-        f.write(f"## Auth Endpoints\n")
-        f.write(f"- POST /api/auth/register\n")
-        f.write(f"- POST /api/auth/login\n")
-        f.write(f"- POST /api/auth/logout\n")
-        f.write(f"- GET /api/auth/me\n")
-        f.write(f"- POST /api/auth/refresh\n")
+        f.write("- Role: admin\n\n")
+        f.write("## Auth Endpoints\n")
+        f.write("- POST /api/auth/register\n")
+        f.write("- POST /api/auth/login\n")
+        f.write("- POST /api/auth/logout\n")
+        f.write("- GET /api/auth/me\n")
+        f.write("- POST /api/auth/refresh\n")
     
     # Init storage
     try:
