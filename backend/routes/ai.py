@@ -538,7 +538,10 @@ async def daily_briefing(probe: bool = False, user: dict = Depends(get_current_u
         "2. \"Today's Priorities\" — up to 3 specific actions the broker should take today, each as one sentence\n"
         "3. \"Watch List\" — up to 3 cases or commissions that need attention this week, each as one sentence\n"
         "4. One brief closing observation or encouragement\n\n"
-        "Be direct, specific, and professional. Use British English. Name specific clients and lenders where relevant. Do not use generic filler phrases."
+        "Be direct, specific, and professional. Use British English. Name specific clients and lenders where relevant. Do not use generic filler phrases. "
+        "FORMATTING RULES: Do not use markdown syntax. Do not use '#', '##', '**', '*', or any other markdown characters. "
+        "Write section labels as plain text on their own line (e.g., 'Today's Priorities:' not '## Today's Priorities'). "
+        "Use plain numbered lines (1. 2. 3.) for list items. Separate sections with a blank line."
     )
 
     # ── Call Claude ──────────────────────────────────────

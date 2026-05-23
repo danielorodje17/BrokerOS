@@ -193,6 +193,18 @@ All P0 features delivered in MVP.
 - **Files**: `routes/ai.py` (+lender-match), `routes/cases.py` (+PATCH /lender), `frontend/src/pages/CaseDetail.js` (tabs + match UI)
 - **Tested**: 14/14 backend + 100% frontend (iteration_8.json)
 
+### AI Feature 3: Daily Briefing (23 May 2026)
+- **Endpoints**:
+  - `GET /api/ai/daily-briefing` → `{briefing, generated_at, cached}` — generates via Claude on first call of the day, returns cached version on subsequent calls
+  - `GET /api/ai/daily-briefing?probe=true` → returns cached briefing if present, else `{briefing:null, cached:false}` WITHOUT calling Claude (fast page-load probe)
+  - `DELETE /api/ai/daily-briefing` → clears today's cache (used by Regenerate)
+- **Context**: active cases (stage+days-in-stage+lender+client), commission alerts (overdue + due-this-week counts & totals), clawback risk within 60 days
+- **Model**: `claude-sonnet-4-5` via `emergentintegrations`. British English. Plain-text output (no markdown).
+- **Cache**: `daily_briefings` collection keyed by `{user_id, date(YYYY-MM-DD)}` with upsert
+- **UI**: Top of Dashboard, teal 4px left border on light grey card. Probe on mount; if cached → renders paragraphs + "Regenerate" link; else → "Generate Briefing" button. Loading state: spinner + "Claude is reviewing your pipeline…"
+- **Files**: `routes/ai.py` (+daily-briefing GET/DELETE), `frontend/src/pages/Dashboard.js`
+- **Tested**: 13/13 backend + 13/13 frontend (iteration_9.json)
+
 ## Next Tasks (Open Backlog)
 1. Document storage with Emergent Object Storage (P1)
 2. Email notifications for commission due dates (P1)
