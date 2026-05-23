@@ -3,6 +3,7 @@ routes/ai.py — Phase 2 AI features powered by Claude via emergentintegrations.
 """
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
+from datetime import datetime, timezone, timedelta, date
 import uuid
 import os
 import json
@@ -10,7 +11,7 @@ import re
 import logging
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
-from .deps import db, get_current_user
+from .deps import db, get_current_user, get_case_filter
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 logger = logging.getLogger(__name__)
@@ -358,3 +359,232 @@ async def lender_match(body: LenderMatchRequest, user: dict = Depends(get_curren
             "message": None,
         },
     }
+
+
+# ─────────────────────────────────────────────────────────
+# AI Feature 3: Daily Briefing
+# ─────────────────────────────────────────────────────────
+
+ACTIVE_STAGES = [
+    "new_enquiry", "fact_find", "aip_submitted", "aip_received",
+    "full_application", "valuation", "offer", "exchange",
+]
+
+_STAGE_LABELS = {
+    "new_enquiry": "New Enquiry",
+    "fact_find": "Fact Find",
+    "aip_submitted": "AIP Submitted",
+    "aip_received": "AIP Received",
+    "full_application": "Full Application",
+    "valuation": "Valuation",
+    "offer": "Mortgage Offer",
+    "exchange": "Exchange",
+    "completion": "Completion",
+    "on_hold": "On Hold",
+    "declined": "Declined",
+}
+
+
+def _parse_iso_date(value):
+    if not value:
+        return None
+    try:
+        if "T" in str(value):
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00")).date()
+        return datetime.strptime(str(value), "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
+
+
+@router.get("/daily-briefing")
+async def daily_briefing(probe: bool = False, user: dict = Depends(get_current_user)):
+    """
+    GET /api/ai/daily-briefing
+    Personalised AI briefing cached per user per day.
+    If ?probe=true, returns the cached briefing if present or {cached:false, briefing:null}
+    without calling Claude — used by the Dashboard to decide whether to show the button.
+    """
+    today = datetime.now(timezone.utc).date()
+    today_iso = today.isoformat()
+
+    # ── Cache check ──────────────────────────────────────
+    cached = await db.daily_briefings.find_one(
+        {"user_id": user["id"], "date": today_iso},
+        {"_id": 0},
+    )
+    if cached:
+        return {
+            "briefing": cached["briefing"],
+            "generated_at": cached["generated_at"],
+            "cached": True,
+        }
+    if probe:
+        return {"briefing": None, "generated_at": None, "cached": False}
+
+    # ── Fetch active cases ───────────────────────────────
+    case_filter = {**get_case_filter(user), "stage": {"$in": ACTIVE_STAGES}}
+    cases = await db.cases.find(case_filter, {"_id": 0}).to_list(500)
+
+    case_lines = []
+    for c in cases[:30]:  # cap context size
+        client = await db.clients.find_one(
+            {"id": c.get("client_id")},
+            {"_id": 0, "first_name": 1, "last_name": 1},
+        )
+        client_name = (
+            f"{client['first_name']} {client['last_name']}" if client else "Unknown"
+        )
+        lender_name = "no lender"
+        if c.get("lender_id"):
+            lender = await db.lenders.find_one(
+                {"id": c["lender_id"]}, {"_id": 0, "name": 1}
+            )
+            if lender:
+                lender_name = lender["name"]
+
+        # days in current stage
+        stage_dt = c.get("stage_updated_at") or c.get("created_at")
+        days_in_stage = "?"
+        if stage_dt:
+            try:
+                d = datetime.fromisoformat(str(stage_dt).replace("Z", "+00:00")).date()
+                days_in_stage = (today - d).days
+            except (ValueError, TypeError):
+                pass
+
+        case_lines.append(
+            f"- {client_name}: {_STAGE_LABELS.get(c.get('stage'), c.get('stage'))} "
+            f"({days_in_stage} days), lender: {lender_name}"
+        )
+
+    # ── Commission alerts (overdue + due this week) ──────
+    fourteen_days_later = today + timedelta(days=14)
+    thirty_days_ago = today - timedelta(days=30)
+
+    comm_query = {
+        "user_id": user["id"],
+        "status": {"$ne": "received"},
+        "expected_payment_date": {"$ne": None},
+    }
+    pending_comms = await db.commission_records.find(comm_query, {"_id": 0}).to_list(1000)
+
+    overdue_count = 0
+    overdue_total = 0.0
+    due_week_count = 0
+    due_week_total = 0.0
+    for c in pending_comms:
+        d = _parse_iso_date(c.get("expected_payment_date"))
+        if not d:
+            continue
+        amount = c.get("expected_amount") or 0
+        if today <= d <= fourteen_days_later:
+            due_week_count += 1
+            due_week_total += amount
+        elif d < thirty_days_ago:
+            overdue_count += 1
+            overdue_total += amount
+
+    # ── Clawback risk within 60 days ─────────────────────
+    sixty_days_later = today + timedelta(days=60)
+    sixty_days_iso = sixty_days_later.isoformat()
+    clawback_records = await db.commission_records.find(
+        {
+            "user_id": user["id"],
+            "clawback_risk_until": {
+                "$ne": None,
+                "$gt": today_iso,
+                "$lte": sixty_days_iso,
+            },
+        },
+        {"_id": 0},
+    ).sort("clawback_risk_until", 1).to_list(50)
+
+    clawback_lines = []
+    for c in clawback_records:
+        case = await db.cases.find_one(
+            {"id": c.get("case_id")}, {"_id": 0, "client_id": 1}
+        )
+        client_name = "Unknown"
+        if case:
+            client = await db.clients.find_one(
+                {"id": case.get("client_id")},
+                {"_id": 0, "first_name": 1, "last_name": 1},
+            )
+            if client:
+                client_name = f"{client['first_name']} {client['last_name']}"
+        risk_date = _parse_iso_date(c.get("clawback_risk_until"))
+        days_remaining = (risk_date - today).days if risk_date else "?"
+        clawback_lines.append(
+            f"- {client_name}: clawback until {c.get('clawback_risk_until')} ({days_remaining} days remaining)"
+        )
+
+    # ── Build prompt ─────────────────────────────────────
+    today_display = today.strftime("%A, %d %B %Y")
+    pipeline_block = "\n".join(case_lines) if case_lines else "No active cases."
+    clawback_block = "\n".join(clawback_lines) if clawback_lines else "None within 60 days."
+
+    prompt = (
+        "You are a UK mortgage broker assistant generating a daily briefing.\n\n"
+        f"Today is {today_display}. The broker has {len(cases)} active cases.\n\n"
+        "PIPELINE SNAPSHOT:\n"
+        f"{pipeline_block}\n\n"
+        "COMMISSION ALERTS:\n"
+        f"- Overdue: {overdue_count} commissions totalling £{overdue_total:,.0f}\n"
+        f"- Due this week: {due_week_count} commissions totalling £{due_week_total:,.0f}\n\n"
+        "CLAWBACK RISK (expiring within 60 days):\n"
+        f"{clawback_block}\n\n"
+        "Generate a concise daily briefing for the broker. Structure it as:\n"
+        "1. A one-sentence overall summary of where the pipeline stands today\n"
+        "2. \"Today's Priorities\" — up to 3 specific actions the broker should take today, each as one sentence\n"
+        "3. \"Watch List\" — up to 3 cases or commissions that need attention this week, each as one sentence\n"
+        "4. One brief closing observation or encouragement\n\n"
+        "Be direct, specific, and professional. Use British English. Name specific clients and lenders where relevant. Do not use generic filler phrases."
+    )
+
+    # ── Call Claude ──────────────────────────────────────
+    briefing_text = ""
+    try:
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=str(uuid.uuid4()),
+            system_message="You are a UK mortgage broker assistant writing personalised, professional daily briefings.",
+        ).with_model("anthropic", "claude-sonnet-4-5")
+
+        briefing_text = await chat.send_message(UserMessage(text=prompt))
+    except Exception as e:
+        logger.exception("Claude daily-briefing call failed: %s", e)
+        briefing_text = (
+            f"Daily briefing unavailable (AI service error). "
+            f"You have {len(cases)} active cases, {overdue_count} overdue commissions, "
+            f"and {due_week_count} due this week."
+        )
+
+    generated_at = datetime.now(timezone.utc).isoformat()
+
+    # ── Cache it ─────────────────────────────────────────
+    await db.daily_briefings.update_one(
+        {"user_id": user["id"], "date": today_iso},
+        {
+            "$set": {
+                "user_id": user["id"],
+                "date": today_iso,
+                "briefing": briefing_text,
+                "generated_at": generated_at,
+            }
+        },
+        upsert=True,
+    )
+
+    return {
+        "briefing": briefing_text,
+        "generated_at": generated_at,
+        "cached": False,
+    }
+
+
+@router.delete("/daily-briefing")
+async def regenerate_daily_briefing(user: dict = Depends(get_current_user)):
+    """Clear today's cached briefing so the next GET regenerates it."""
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    await db.daily_briefings.delete_one({"user_id": user["id"], "date": today_iso})
+    return {"success": True, "message": "Briefing cache cleared"}

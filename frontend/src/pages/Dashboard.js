@@ -28,9 +28,13 @@ export function Dashboard() {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [briefing, setBriefing] = useState(null);  // {briefing, generated_at, cached}
+  const [briefingLoading, setBriefingLoading] = useState(false);
+  const [briefingChecked, setBriefingChecked] = useState(false);
 
   useEffect(() => {
     fetchStats();
+    checkCachedBriefing();
   }, []);
 
   const fetchStats = async () => {
@@ -44,12 +48,125 @@ export function Dashboard() {
     }
   };
 
+  // On page load: probe for a cached briefing only — never trigger Claude on mount.
+  const checkCachedBriefing = async () => {
+    try {
+      const { data } = await axios.get(`${API}/ai/daily-briefing?probe=true`, { withCredentials: true });
+      if (data.cached) {
+        setBriefing(data);
+      }
+    } catch (error) {
+      console.error('Failed to probe briefing:', error);
+    } finally {
+      setBriefingChecked(true);
+    }
+  };
+
+  const generateBriefing = async () => {
+    setBriefingLoading(true);
+    try {
+      const { data } = await axios.get(`${API}/ai/daily-briefing`, { withCredentials: true });
+      setBriefing(data);
+    } catch (error) {
+      console.error('Failed to generate briefing:', error);
+    } finally {
+      setBriefingLoading(false);
+    }
+  };
+
+  const regenerateBriefing = async () => {
+    setBriefingLoading(true);
+    try {
+      await axios.delete(`${API}/ai/daily-briefing`, { withCredentials: true });
+      const { data } = await axios.get(`${API}/ai/daily-briefing`, { withCredentials: true });
+      setBriefing(data);
+    } catch (error) {
+      console.error('Failed to regenerate briefing:', error);
+    } finally {
+      setBriefingLoading(false);
+    }
+  };
+
+  const todayDisplay = new Date().toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
+
   const activePipelineStages = ['new_enquiry', 'fact_find', 'aip_submitted', 'aip_received', 'full_application', 'valuation', 'offer', 'exchange'];
 
   return (
     <div data-testid="dashboard-page">
       <div className="page-header">
         <h1>Dashboard</h1>
+      </div>
+
+      {/* Daily Briefing */}
+      <div
+        className="bg-[#F9FAFB] border border-[#E5E7EB] border-l-4 border-l-[#0E9F6E] rounded-md p-6 mb-6"
+        data-testid="daily-briefing-section"
+      >
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <svg
+              className="w-5 h-5 text-[#0E9F6E]"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+              />
+            </svg>
+            <h2 className="text-lg font-semibold text-[#111827]">Today's Briefing</h2>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-[#6B7280]" data-testid="briefing-date">{todayDisplay}</span>
+            {briefing && !briefingLoading && (
+              <button
+                type="button"
+                onClick={regenerateBriefing}
+                className="text-xs text-[#6B7280] hover:text-[#0E9F6E] hover:underline"
+                data-testid="regenerate-briefing-link"
+              >
+                Regenerate
+              </button>
+            )}
+          </div>
+        </div>
+
+        {briefingLoading ? (
+          <div className="flex items-center gap-3" data-testid="briefing-loading">
+            <svg className="animate-spin h-5 w-5 text-[#0E9F6E]" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" className="opacity-25" />
+              <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" fill="none" />
+            </svg>
+            <span className="italic text-[#6B7280]">Claude is reviewing your pipeline…</span>
+          </div>
+        ) : briefing && briefing.briefing ? (
+          <div className="text-[#111827] leading-relaxed space-y-3" data-testid="briefing-content">
+            {briefing.briefing.split(/\n\n+/).map((para, idx) => (
+              <p key={idx} className="whitespace-pre-wrap">{para}</p>
+            ))}
+          </div>
+        ) : briefingChecked ? (
+          <div data-testid="briefing-empty">
+            <p className="text-sm text-[#6B7280] mb-3">
+              Get a personalised AI briefing on your pipeline and what needs attention today.
+            </p>
+            <button
+              type="button"
+              onClick={generateBriefing}
+              className="bg-[#0E9F6E] hover:bg-[#0B8A5E] text-white text-sm font-medium px-4 py-2 rounded-md transition-colors"
+              data-testid="generate-briefing-btn"
+            >
+              Generate Briefing
+            </button>
+          </div>
+        ) : (
+          <div className="h-6" />
+        )}
       </div>
 
       {/* Stats Grid */}
