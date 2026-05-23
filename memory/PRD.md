@@ -156,10 +156,23 @@ All P0 features delivered in MVP.
 - Count badge on tab when items exist; empty state message when none
 - All existing CRUD unaffected; clawback list refreshes on commission add/edit/delete
 
+### Extension 7: Team Permission Layer (23 May 2026)
+- **`routes/deps.py`**: Added `get_case_filter(user)` — returns `{"assigned_broker_id": user.id}` for advisers, `{}` for all others
+- **`routes/cases.py`**: All 5 endpoints use `_check_adviser_access` helper; `list_cases` uses `get_case_filter` merged with other filters; admin/principal see all cases unrestricted
+- **`routes/commissions.py`**: List endpoint — advisers filtered by their case IDs; principal/admin query `{}` (see all commissions)
+- **`routes/notes.py`**: Both note list endpoints check adviser case ownership; principals/admins pass freely
+- **`routes/auth.py`**: `GET /api/auth/team/members` — returns 403 for adviser, `{success:true, data:[]}` when no team_id, or full team list by team_id
+- **Sidebar.js**: Role label now handles admin → "Administrator" / principal → "Principal" / adviser → "Adviser"
+- **Pipeline.js / Clients.js / Commissions.js**: Broker filter dropdown (leftmost, `All Brokers` default) — fetched from `/auth/team/members` on mount for principal/admin; hidden when empty or adviser; client-side filter on `assigned_broker_id` / `user_id`
+- **`scripts/migrate_assign_cases.py`**: Idempotent migration assigns orphaned cases to first admin
+- Tested: 31/31 backend + 100% frontend ✅
+
 ## Next Tasks (Open Backlog)
 1. Document storage with Emergent Object Storage (P1)
 2. Email notifications for commission due dates (P1)
-3. Server-side search on Commissions & Pipeline (currently client-side, only filters current page)
-4. Reduce N+1 queries in reminders/clawback endpoints via $lookup or batched $in queries
-5. Phase 2 AI features (lender matching, OCR auto-fill, rate comparison)
+3. Team management UI — invite advisers, assign team_id, set roles (P1)
+4. Server-side search on Commissions & Pipeline (currently client-side, filters current page only)
+5. Reduce N+1 queries in reminders/clawback/cases list endpoints via $lookup
+6. Commission reminders/clawback-risk to respect team scope for admins (currently personal view)
+7. Phase 2 AI features (lender matching, OCR auto-fill, rate comparison)
 
