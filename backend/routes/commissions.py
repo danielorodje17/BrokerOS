@@ -142,7 +142,16 @@ async def list_commissions(
     limit: int = 20,
     user: dict = Depends(get_current_user)
 ):
-    query = {"user_id": user["id"]}
+    # Advisers only see commissions linked to their own cases
+    query = {}
+    if user.get("role") == "adviser":
+        case_ids = [
+            c["id"] for c in await db.cases.find(
+                {"assigned_broker_id": user["id"]}, {"_id": 0, "id": 1}
+            ).to_list(1000)
+        ]
+        query["case_id"] = {"$in": case_ids}
+    # Principals and admins see all commissions — no case filter applied
     if status:
         query["status"] = status
 

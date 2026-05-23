@@ -86,6 +86,15 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
+def get_case_filter(current_user: dict) -> dict:
+    """Returns a MongoDB filter restricting cases by broker for advisers only.
+    Principals and admins receive an empty dict — they see all cases.
+    """
+    if current_user.get("role") == "adviser":
+        return {"assigned_broker_id": current_user["id"]}
+    return {}
+
+
 # ========== STORAGE FUNCTIONS ==========
 def init_storage():
     global storage_key

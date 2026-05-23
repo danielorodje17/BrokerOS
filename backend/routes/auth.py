@@ -170,6 +170,34 @@ async def reset_password(data: ResetPassword):
     return {"message": "Password reset successfully"}
 
 
+@router.get("/team/members")
+async def get_team_members(user: dict = Depends(get_current_user)):
+    """Return all users sharing the same team_id. Advisers are not permitted."""
+    if user.get("role") == "adviser":
+        raise HTTPException(status_code=403, detail={"success": False, "error": "Access denied"})
+
+    team_id = user.get("team_id")
+    if not team_id:
+        return {"success": True, "data": []}
+
+    members_raw = await db.users.find(
+        {"team_id": team_id},
+        {"_id": 1, "first_name": 1, "last_name": 1, "email": 1, "role": 1}
+    ).to_list(200)
+
+    data = [
+        {
+            "id": str(m["_id"]),
+            "first_name": m.get("first_name", ""),
+            "last_name": m.get("last_name", ""),
+            "email": m.get("email", ""),
+            "role": m.get("role", "adviser"),
+        }
+        for m in members_raw
+    ]
+    return {"success": True, "data": data}
+
+
 # User profile endpoints
 users_router = APIRouter(prefix="/users", tags=["users"])
 

@@ -6,6 +6,7 @@ import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Skeleton } from '../components/ui/skeleton';
+import { useAuth } from '../contexts/AuthContext';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -34,6 +35,7 @@ const formatDate = (dateStr) => {
 };
 
 export function Clients() {
+  const { user } = useAuth();
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -41,6 +43,8 @@ export function Clients() {
   const [total, setTotal] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [selectedBroker, setSelectedBroker] = useState('');
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
@@ -59,6 +63,14 @@ export function Clients() {
   useEffect(() => {
     fetchClients();
   }, [page, search]);
+
+  useEffect(() => {
+    if (user?.role === 'principal' || user?.role === 'admin') {
+      axios.get(`${API}/auth/team/members`, { withCredentials: true })
+        .then(({ data }) => { if (data.success) setTeamMembers(data.data); })
+        .catch(() => {});
+    }
+  }, [user?.role]);
 
   const fetchClients = async () => {
     setLoading(true);
@@ -162,8 +174,26 @@ export function Clients() {
         </Button>
       </div>
 
-      {/* Search */}
-      <div className="search-bar">
+      {/* Search + Broker filter */}
+      <div className="flex gap-3 mb-4 items-center flex-wrap">
+        {teamMembers.length > 0 && (
+          <Select
+            value={selectedBroker || 'all'}
+            onValueChange={(v) => setSelectedBroker(v === 'all' ? '' : v)}
+          >
+            <SelectTrigger className="form-input w-40" data-testid="broker-filter">
+              <SelectValue placeholder="All Brokers" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Brokers</SelectItem>
+              {teamMembers.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.first_name} {m.last_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Input
           type="text"
           placeholder="Search clients..."
@@ -218,7 +248,7 @@ export function Clients() {
                 </td>
               </tr>
             ) : (
-              clients.map((client) => (
+              (selectedBroker ? clients.filter(c => c.user_id === selectedBroker) : clients).map((client) => (
                 <tr key={client.id} className="table-row" data-testid={`client-row-${client.id}`}>
                   <td className="px-4 py-3 font-medium text-[#111827]">
                     {client.first_name} {client.last_name}

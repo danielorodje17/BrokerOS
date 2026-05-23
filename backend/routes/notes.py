@@ -12,9 +12,11 @@ router = APIRouter(prefix="/notes", tags=["notes"])
 @router.get("")
 async def list_notes(case_id: str = Query(...), user: dict = Depends(get_current_user)):
     """Get all notes for a case, sorted by created_at descending"""
-    case = await db.cases.find_one({"id": case_id, "assigned_broker_id": user["id"]})
+    case = await db.cases.find_one({"id": case_id})
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    if user.get("role") == "adviser" and case.get("assigned_broker_id") != user["id"]:
+        raise HTTPException(status_code=403, detail={"success": False, "error": "Access denied"})
     notes = await db.notes.find({"case_id": case_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
     return {"notes": notes, "total": len(notes)}
 
@@ -22,9 +24,11 @@ async def list_notes(case_id: str = Query(...), user: dict = Depends(get_current
 @router.post("")
 async def create_note(data: NoteCreate, user: dict = Depends(get_current_user)):
     """Create a new note (immutable - no edit or delete)"""
-    case = await db.cases.find_one({"id": data.case_id, "assigned_broker_id": user["id"]})
+    case = await db.cases.find_one({"id": data.case_id})
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    if user.get("role") == "adviser" and case.get("assigned_broker_id") != user["id"]:
+        raise HTTPException(status_code=403, detail={"success": False, "error": "Access denied"})
 
     # Validate content length
     if len(data.content) > 2000:
@@ -55,8 +59,10 @@ cases_notes_router = APIRouter(tags=["notes"])
 @cases_notes_router.get("/cases/{case_id}/notes")
 async def list_case_notes(case_id: str, user: dict = Depends(get_current_user)):
     """Get all notes for a case, sorted by created_at descending"""
-    case = await db.cases.find_one({"id": case_id, "assigned_broker_id": user["id"]})
+    case = await db.cases.find_one({"id": case_id})
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    if user.get("role") == "adviser" and case.get("assigned_broker_id") != user["id"]:
+        raise HTTPException(status_code=403, detail={"success": False, "error": "Access denied"})
     notes = await db.notes.find({"case_id": case_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
     return {"notes": notes, "total": len(notes)}

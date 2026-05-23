@@ -67,8 +67,12 @@ export function Sidebar() {
             <div className="sidebar-user-name" data-testid="user-name">
               {getUserName()}
             </div>
-            <div className="sidebar-user-role">
-              {user?.role === 'admin' ? 'Administrator' : 'Adviser'}
+            <div className="sidebar-user-role" data-testid="user-role">
+              {user?.role === 'admin'
+                ? 'Administrator'
+                : user?.role === 'principal'
+                ? 'Principal'
+                : 'Adviser'}
             </div>
           </div>
         </div>

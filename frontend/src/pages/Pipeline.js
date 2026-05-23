@@ -5,6 +5,7 @@ import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Skeleton } from '../components/ui/skeleton';
+import { useAuth } from '../contexts/AuthContext';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -28,6 +29,7 @@ const formatCurrency = (value) => {
 };
 
 export function Pipeline() {
+  const { user } = useAuth();
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCase, setSelectedCase] = useState(null);
@@ -35,10 +37,20 @@ export function Pipeline() {
   const [updating, setUpdating] = useState(false);
   const [viewMode, setViewMode] = useState('kanban'); // 'kanban' | 'list'
   const [search, setSearch] = useState('');
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [selectedBroker, setSelectedBroker] = useState('');
 
   useEffect(() => {
     fetchCases();
   }, []);
+
+  useEffect(() => {
+    if (user?.role === 'principal' || user?.role === 'admin') {
+      axios.get(`${API}/auth/team/members`, { withCredentials: true })
+        .then(({ data }) => { if (data.success) setTeamMembers(data.data); })
+        .catch(() => {});
+    }
+  }, [user?.role]);
 
   const fetchCases = async () => {
     setLoading(true);
@@ -78,16 +90,17 @@ export function Pipeline() {
 
   const getStageInfo = (stage) => stages.find(s => s.value === stage) || { label: stage, badge: 'badge-grey' };
 
-  // List view filtered cases (client first/last/full name + lender name, case-insensitive)
+  // List view filtered cases — broker filter + text search
   const filteredCases = useMemo(() => {
+    const base = selectedBroker ? cases.filter(c => c.assigned_broker_id === selectedBroker) : cases;
     const q = search.toLowerCase().trim();
-    if (!q) return cases;
-    return cases.filter((c) => {
+    if (!q) return base;
+    return base.filter((c) => {
       const clientName = (c.client_name || '').toLowerCase();
       const lenderName = (c.lender_name || '').toLowerCase();
       return clientName.includes(q) || lenderName.includes(q);
     });
-  }, [cases, search]);
+  }, [cases, search, selectedBroker]);
 
   return (
     <div data-testid="pipeline-page">
@@ -126,9 +139,27 @@ export function Pipeline() {
         </div>
       </div>
 
-      {/* Search bar — visible only in List view */}
+      {/* Search bar + Broker filter — visible only in List view */}
       {viewMode === 'list' && (
-        <div className="mb-6">
+        <div className="flex gap-3 mb-6 items-center flex-wrap">
+          {teamMembers.length > 0 && (
+            <Select
+              value={selectedBroker || 'all'}
+              onValueChange={(v) => setSelectedBroker(v === 'all' ? '' : v)}
+            >
+              <SelectTrigger className="form-input w-40" data-testid="broker-filter">
+                <SelectValue placeholder="All Brokers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Brokers</SelectItem>
+                {teamMembers.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.first_name} {m.last_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Input
             type="text"
             placeholder="Search by client or lender name..."

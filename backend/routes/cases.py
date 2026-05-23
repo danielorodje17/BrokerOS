@@ -3,10 +3,19 @@ from typing import Optional
 import uuid
 from datetime import datetime, timezone
 
-from .deps import db, get_current_user
+from .deps import db, get_current_user, get_case_filter
 from .models import CaseCreate
 
 router = APIRouter(prefix="/cases", tags=["cases"])
+
+
+def _check_adviser_access(user: dict, case: dict):
+    """Raise 403 if the current user is an adviser who does not own this case."""
+    if user.get("role") == "adviser" and case.get("assigned_broker_id") != user["id"]:
+        raise HTTPException(
+            status_code=403,
+            detail={"success": False, "error": "Access denied"}
+        )
 
 
 @router.get("")
@@ -17,7 +26,7 @@ async def list_cases(
     limit: int = 20,
     user: dict = Depends(get_current_user)
 ):
-    query = {"assigned_broker_id": user["id"]}
+    query = {**get_case_filter(user)}
     if stage:
         query["stage"] = stage
     if search:
@@ -68,9 +77,10 @@ async def create_case(data: CaseCreate, user: dict = Depends(get_current_user)):
 
 @router.get("/{case_id}")
 async def get_case(case_id: str, user: dict = Depends(get_current_user)):
-    case = await db.cases.find_one({"id": case_id, "assigned_broker_id": user["id"]}, {"_id": 0})
+    case = await db.cases.find_one({"id": case_id}, {"_id": 0})
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    _check_adviser_access(user, case)
 
     # Enrich
     client = await db.clients.find_one({"id": case.get("client_id")}, {"_id": 0})
@@ -84,6 +94,11 @@ async def get_case(case_id: str, user: dict = Depends(get_current_user)):
 
 @router.put("/{case_id}")
 async def update_case(case_id: str, data: CaseCreate, user: dict = Depends(get_current_user)):
+    existing = await db.cases.find_one({"id": case_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Case not found")
+    _check_adviser_access(user, existing)
+
     update_doc = data.model_dump()
     update_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
 
@@ -91,22 +106,21 @@ async def update_case(case_id: str, data: CaseCreate, user: dict = Depends(get_c
     if data.loan_amount and data.property_value and data.property_value > 0:
         update_doc["ltv"] = round((data.loan_amount / data.property_value) * 100, 2)
 
-    # Check if stage changed
-    existing = await db.cases.find_one({"id": case_id, "assigned_broker_id": user["id"]})
-    if existing and existing.get("stage") != data.stage:
+    # Track stage change timestamp
+    if existing.get("stage") != data.stage:
         update_doc["stage_updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    result = await db.cases.update_one(
-        {"id": case_id, "assigned_broker_id": user["id"]},
-        {"$set": update_doc}
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Case not found")
+    await db.cases.update_one({"id": case_id}, {"$set": update_doc})
     return await db.cases.find_one({"id": case_id}, {"_id": 0})
 
 
 @router.patch("/{case_id}/stage")
 async def update_case_stage(case_id: str, stage: str = Query(...), user: dict = Depends(get_current_user)):
+    existing = await db.cases.find_one({"id": case_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Case not found")
+    _check_adviser_access(user, existing)
+
     update_doc = {
         "stage": stage,
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -115,18 +129,16 @@ async def update_case_stage(case_id: str, stage: str = Query(...), user: dict = 
     if stage == "completion":
         update_doc["actual_completion_date"] = datetime.now(timezone.utc).isoformat()
 
-    result = await db.cases.update_one(
-        {"id": case_id, "assigned_broker_id": user["id"]},
-        {"$set": update_doc}
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Case not found")
+    await db.cases.update_one({"id": case_id}, {"$set": update_doc})
     return await db.cases.find_one({"id": case_id}, {"_id": 0})
 
 
 @router.delete("/{case_id}")
 async def delete_case(case_id: str, user: dict = Depends(get_current_user)):
-    result = await db.cases.delete_one({"id": case_id, "assigned_broker_id": user["id"]})
-    if result.deleted_count == 0:
+    existing = await db.cases.find_one({"id": case_id})
+    if not existing:
         raise HTTPException(status_code=404, detail="Case not found")
+    _check_adviser_access(user, existing)
+
+    await db.cases.delete_one({"id": case_id})
     return {"message": "Case deleted"}

@@ -6,6 +6,7 @@ import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Skeleton } from '../components/ui/skeleton';
+import { useAuth } from '../contexts/AuthContext';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -61,6 +62,7 @@ export function Commissions() {
     status: 'pending',
     clawback_risk_until: ''
   });
+  const { user } = useAuth();
   const [saving, setSaving] = useState(false);
   const [generatingInvoice, setGeneratingInvoice] = useState(null);
 
@@ -68,6 +70,10 @@ export function Commissions() {
   const [activeTab, setActiveTab] = useState('all');
   const [clawbackData, setClawbackData] = useState([]);
   const [clawbackLoading, setClawbackLoading] = useState(false);
+
+  // Team broker filter (principals + admins only)
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [selectedBroker, setSelectedBroker] = useState('');
 
   // Summary stats
   const [summary, setSummary] = useState({ pending: 0, received: 0 });
@@ -86,6 +92,15 @@ export function Commissions() {
   useEffect(() => {
     fetchClawbackRisk();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch team members once (for broker filter — principal/admin only)
+  useEffect(() => {
+    if (user?.role === 'principal' || user?.role === 'admin') {
+      axios.get(`${API}/auth/team/members`, { withCredentials: true })
+        .then(({ data }) => { if (data.success) setTeamMembers(data.data); })
+        .catch(() => {});
+    }
+  }, [user?.role]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchClawbackRisk = async () => {
     setClawbackLoading(true);
@@ -257,6 +272,11 @@ export function Commissions() {
       || invoiceNumber.includes(searchLower);
   });
 
+  // Broker filter (principal/admin only — client-side on top of search filter)
+  const displayedCommissions = selectedBroker
+    ? filteredCommissions.filter(c => c.user_id === selectedBroker)
+    : filteredCommissions;
+
   const totalPages = Math.ceil(total / 20);
   const hasReminders = !remindersDismissed && (reminders.due_soon.length > 0 || reminders.overdue.length > 0);
 
@@ -386,7 +406,25 @@ export function Commissions() {
 
       {/* Filter and Search — All Commissions tab only */}
       {activeTab === 'all' && (
-      <div className="flex gap-4 mb-6">
+      <div className="flex gap-4 mb-6 flex-wrap">
+        {teamMembers.length > 0 && (
+          <Select
+            value={selectedBroker || 'all'}
+            onValueChange={(v) => setSelectedBroker(v === 'all' ? '' : v)}
+          >
+            <SelectTrigger className="form-input w-40" data-testid="broker-filter">
+              <SelectValue placeholder="All Brokers" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Brokers</SelectItem>
+              {teamMembers.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.first_name} {m.last_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Input
           type="text"
           placeholder="Search by client, lender or invoice #..."
@@ -437,7 +475,7 @@ export function Commissions() {
                   <td className="px-4 py-3"><Skeleton className="h-4 w-20 ml-auto" /></td>
                 </tr>
               ))
-            ) : filteredCommissions.length === 0 ? (
+            ) : displayedCommissions.length === 0 ? (
               <tr>
                 <td colSpan={7}>
                   <div className="empty-state">
@@ -472,7 +510,7 @@ export function Commissions() {
                 </td>
               </tr>
             ) : (
-              filteredCommissions.map((commission) => {
+              displayedCommissions.map((commission) => {
                 const statusInfo = getStatusInfo(commission.status);
                 const isHighlighted = highlightedRow === commission.id;
                 return (
