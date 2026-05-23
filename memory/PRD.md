@@ -26,7 +26,7 @@ BrokerOS is a web-based SaaS application for independent mortgage brokers in the
 - Commission tracking with clawback risk monitoring
 - Kanban pipeline for case progress visualization
 
-## What's Been Implemented (21 Jan 2026)
+## What's Been Implemented (23 May 2026)
 
 ### Authentication Module
 - [x] JWT login with httpOnly cookies
@@ -51,6 +51,8 @@ BrokerOS is a web-based SaaS application for independent mortgage brokers in the
 - [x] Stage tracking (11 stages from new_enquiry to completion)
 - [x] Auto LTV calculation
 - [x] Rate type and percentage
+- [x] **Case Detail Page** with comprehensive view of case, client, and lender info
+- [x] **Case Notes Timeline** - immutable notes with author name, relative timestamps, 2000 char limit
 
 ### Pipeline (Kanban)
 - [x] Visual Kanban board by stage
@@ -71,6 +73,7 @@ BrokerOS is a web-based SaaS application for independent mortgage brokers in the
 - [x] Status tracking (pending/invoiced/received/overdue/clawback_risk)
 - [x] Clawback risk date
 - [x] Summary cards (pending total, received total)
+- [x] **PDF Invoice Generation** - professional invoices with INV-YYYY-NNNN format
 
 ### Dashboard
 - [x] Stats cards (clients, cases, pending commission, received)
@@ -84,7 +87,7 @@ All P0 features delivered in MVP.
 
 ### P1 (High Priority)
 - [ ] Document upload/download (requires EMERGENT_LLM_KEY setup)
-- [ ] Notes per case with timeline
+- [x] ~~Notes per case with timeline~~ ✓ Implemented
 - [ ] Case search by client name
 - [ ] Email notifications for commission due dates
 
@@ -104,9 +107,24 @@ All P0 features delivered in MVP.
 ## Test Credentials
 - Admin: admin@brokeros.com / Admin123!
 - API Base URL: https://commission-track-28.preview.emergentagent.com/api
+- Test Case ID: 09ecdc6c-828e-4134-b316-9c112ccd2848
+
+## New Features (Phase 1 Extension)
+
+### Case Notes Timeline
+- **Endpoint**: POST /api/notes, GET /api/notes?case_id={id}
+- **Features**: Immutable notes, author_name denormalized, 2000 char limit, sorted desc by created_at
+- **UI**: Textarea with character counter (X/2000), navy Add Note button, note cards with teal author and grey relative time
+
+### PDF Invoice Generation
+- **Endpoint**: GET /api/commissions/{id}/invoice
+- **Invoice Format**: INV-YYYY-NNNN (sequential per broker per year)
+- **Collection**: invoice_sequences (user_id, year, last_number)
+- **PDF Library**: reportlab
+- **Content**: Broker info (name, FCA number), Lender, Client, Case reference, Loan amount, Commission amount, 30-day payment terms
 
 ## Next Tasks
 1. Set up EMERGENT_LLM_KEY for document storage
-2. Implement case notes timeline
-3. Extend case search to include client name
-4. Add email notifications for commission tracking
+2. Add case search by client name
+3. Add email notifications for commission tracking
+4. Consider splitting server.py into routers/ for maintainability

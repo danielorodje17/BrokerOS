@@ -125,6 +125,8 @@ export function CaseDetail() {
     }
   };
 
+  const isOverLimit = noteContent.length > 2000;
+
   const stageInfo = caseData ? stages[caseData.stage] || { label: caseData.stage, badge: 'badge-grey' } : {};
 
   if (loading) {
@@ -282,15 +284,15 @@ export function CaseDetail() {
               maxLength={2000}
               data-testid="note-textarea"
             />
-            <div className="absolute bottom-3 right-3 text-xs text-[#6B7280]" data-testid="note-char-count">
+            <div className={`absolute bottom-3 right-3 text-xs ${isOverLimit ? 'text-[#EF4444] font-medium' : 'text-[#6B7280]'}`} data-testid="note-char-count">
               {noteContent.length} / 2000
             </div>
           </div>
           <div className="flex justify-end mt-3">
             <Button
               onClick={handleAddNote}
-              disabled={!noteContent.trim() || addingNote}
-              className="bg-[#0A2342] hover:bg-[#0d2d52] text-white"
+              disabled={!noteContent.trim() || addingNote || isOverLimit}
+              className="bg-[#0A2342] hover:bg-[#0d2d52] text-white disabled:bg-[#D1D5DB] disabled:text-[#9CA3AF]"
               data-testid="add-note-btn"
             >
               {addingNote ? 'Adding...' : 'Add Note'}
