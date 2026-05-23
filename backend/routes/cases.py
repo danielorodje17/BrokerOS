@@ -133,6 +133,26 @@ async def update_case_stage(case_id: str, stage: str = Query(...), user: dict = 
     return await db.cases.find_one({"id": case_id}, {"_id": 0})
 
 
+@router.patch("/{case_id}/lender")
+async def update_case_lender(case_id: str, lender_id: str = Query(...), user: dict = Depends(get_current_user)):
+    existing = await db.cases.find_one({"id": case_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Case not found")
+    _check_adviser_access(user, existing)
+
+    lender = await db.lenders.find_one({"id": lender_id, "user_id": user["id"]}, {"_id": 0})
+    if not lender:
+        raise HTTPException(status_code=404, detail="Lender not found")
+
+    await db.cases.update_one(
+        {"id": case_id},
+        {"$set": {"lender_id": lender_id, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    updated = await db.cases.find_one({"id": case_id}, {"_id": 0})
+    updated["lender"] = lender
+    return updated
+
+
 @router.delete("/{case_id}")
 async def delete_case(case_id: str, user: dict = Depends(get_current_user)):
     existing = await db.cases.find_one({"id": case_id})

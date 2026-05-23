@@ -88,6 +88,10 @@ export function CaseDetail() {
   const [addingNote, setAddingNote] = useState(false);
   const [score, setScore] = useState(null);
   const [scoreLoading, setScoreLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [matchResult, setMatchResult] = useState(null);  // {matches, eligible_count, total_lenders, message}
+  const [matchLoading, setMatchLoading] = useState(false);
+  const [selectingLenderId, setSelectingLenderId] = useState(null);
 
   const fetchCase = useCallback(async () => {
     try {
@@ -129,6 +133,40 @@ export function CaseDetail() {
       setScoreLoading(false);
     }
   }, []);
+
+  const fetchMatches = useCallback(async () => {
+    setMatchLoading(true);
+    try {
+      const { data } = await axios.post(
+        `${API}/ai/lender-match`,
+        { case_id: caseId },
+        { withCredentials: true }
+      );
+      setMatchResult(data.data);
+    } catch (error) {
+      toast.error('Lender matching failed — please try again');
+    } finally {
+      setMatchLoading(false);
+    }
+  }, [caseId]);
+
+  const selectLender = useCallback(async (lenderId, lenderName) => {
+    setSelectingLenderId(lenderId);
+    try {
+      const { data } = await axios.patch(
+        `${API}/cases/${caseId}/lender?lender_id=${lenderId}`,
+        null,
+        { withCredentials: true }
+      );
+      // Optimistically update case data with new lender
+      setCaseData(prev => prev ? { ...prev, lender_id: lenderId, lender: data.lender } : prev);
+      toast.success(`Lender updated to ${lenderName}`);
+    } catch (error) {
+      toast.error('Failed to update lender');
+    } finally {
+      setSelectingLenderId(null);
+    }
+  }, [caseId]);
 
   useEffect(() => {
     fetchCase();
@@ -218,6 +256,39 @@ export function CaseDetail() {
           </Button>
         </Link>
       </div>
+
+      {/* Tabs */}
+      <div className="border-b border-[#E5E7EB] mb-6" data-testid="case-detail-tabs">
+        <nav className="flex gap-6 -mb-px">
+          <button
+            type="button"
+            onClick={() => setActiveTab('overview')}
+            data-testid="tab-overview"
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'overview'
+                ? 'border-[#0E9F6E] text-[#0A2342]'
+                : 'border-transparent text-[#6B7280] hover:text-[#111827]'
+            }`}
+          >
+            Overview
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('lender-match')}
+            data-testid="tab-lender-match"
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'lender-match'
+                ? 'border-[#0E9F6E] text-[#0A2342]'
+                : 'border-transparent text-[#6B7280] hover:text-[#111827]'
+            }`}
+          >
+            AI Lender Match
+          </button>
+        </nav>
+      </div>
+
+      {activeTab === 'overview' && (
+      <>
 
       {/* Case Details */}
       <div className="card mb-6">
@@ -503,6 +574,143 @@ export function CaseDetail() {
           </div>
         )}
       </div>
+      </>
+      )}
+
+      {activeTab === 'lender-match' && (
+        <div data-testid="lender-match-tab-content">
+          <div className="card mb-6">
+            <div className="flex items-start justify-between mb-2">
+              <h2 className="text-lg font-semibold text-[#111827]">AI Lender Match</h2>
+              {matchResult && (
+                <span className="text-sm text-[#6B7280]" data-testid="lender-match-summary">
+                  {matchResult.eligible_count} lender{matchResult.eligible_count !== 1 ? 's' : ''} matched from your panel of {matchResult.total_lenders}
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-[#6B7280] mb-4">
+              Get an AI-ranked shortlist of suitable lenders from your panel for this case.
+            </p>
+
+            {matchLoading ? (
+              <div className="flex items-center gap-3" data-testid="lender-match-loading">
+                <svg className="animate-spin h-5 w-5 text-[#0E9F6E]" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" className="opacity-25" />
+                  <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" fill="none" />
+                </svg>
+                <span className="italic text-[#6B7280]">Analysing your lender panel…</span>
+              </div>
+            ) : (
+              <Button
+                onClick={fetchMatches}
+                className="bg-[#0E9F6E] hover:bg-[#0B8A5E] text-white"
+                data-testid="find-best-lenders-btn"
+              >
+                {matchResult ? 'Find Best Lenders Again' : 'Find Best Lenders'}
+              </Button>
+            )}
+          </div>
+
+          {/* Empty state */}
+          {matchResult && matchResult.matches.length === 0 && (
+            <div
+              className="bg-[#F3F4F6] border border-[#E5E7EB] rounded-md p-6"
+              data-testid="lender-match-empty"
+            >
+              <p className="text-[#111827] font-medium mb-2">No suitable lenders found</p>
+              <p className="text-sm text-[#6B7280] mb-2">{matchResult.message}</p>
+              <p className="text-sm text-[#6B7280]">
+                Review case LTV, loan amount, or client profile — or add more lenders to your panel.
+              </p>
+            </div>
+          )}
+
+          {/* Results */}
+          {matchResult && matchResult.matches.length > 0 && (
+            <div className="space-y-3" data-testid="lender-match-results">
+              {matchResult.matches.map((m) => {
+                const isCurrent = caseData.lender_id === m.lender_id;
+                const lenderSelected = !!caseData.lender_id;
+                const leftBorder =
+                  isCurrent
+                    ? 'border-l-4 border-l-[#0E9F6E]'
+                    : m.rank === 1
+                    ? 'border-l-4 border-l-[#0E9F6E]'
+                    : m.rank === 2
+                    ? 'border-l-4 border-l-[#D1D5DB]'
+                    : '';
+
+                return (
+                  <div
+                    key={m.lender_id}
+                    className={`bg-white border border-[#E5E7EB] rounded-md p-4 flex items-start gap-4 ${leftBorder}`}
+                    data-testid={`lender-match-card-${m.rank}`}
+                  >
+                    {/* Rank badge */}
+                    <div className="shrink-0">
+                      <div
+                        className="w-9 h-9 rounded-full bg-[#0A2342] text-white flex items-center justify-center font-semibold"
+                        data-testid={`rank-badge-${m.rank}`}
+                      >
+                        {m.rank}
+                      </div>
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-3 flex-wrap mb-1">
+                        <span className="font-bold text-[16px] text-[#111827]" data-testid={`lender-name-${m.rank}`}>
+                          {m.lender_name}
+                        </span>
+                        <span className="text-[#0E9F6E] text-sm" data-testid={`proc-fee-${m.rank}`}>
+                          Proc fee: {m.proc_fee_purchase}%
+                        </span>
+                        {isCurrent && (
+                          <span className="badge badge-teal text-xs">Current Lender</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-[#111827] mb-2" data-testid={`reason-${m.rank}`}>
+                        {m.reason}
+                      </p>
+                      {m.watch_out && m.watch_out !== 'None' && (
+                        <div className="flex items-start gap-2 mb-2" data-testid={`watch-out-${m.rank}`}>
+                          <span className="text-base leading-none">⚠️</span>
+                          <span className="text-sm text-[#92400E]">{m.watch_out}</span>
+                        </div>
+                      )}
+                      <div className="text-xs text-[#6B7280]">
+                        Avg processing: {m.avg_processing_days} days · Success rate: {m.broker_success_rate}%
+                      </div>
+                    </div>
+
+                    {/* Select button */}
+                    <div className="shrink-0">
+                      <Button
+                        onClick={() => selectLender(m.lender_id, m.lender_name)}
+                        disabled={lenderSelected || selectingLenderId !== null}
+                        className={`${
+                          isCurrent
+                            ? 'bg-[#D1D5DB] text-[#6B7280] cursor-default'
+                            : lenderSelected
+                            ? 'bg-[#E5E7EB] text-[#9CA3AF] cursor-not-allowed'
+                            : 'bg-[#0E9F6E] hover:bg-[#0B8A5E] text-white'
+                        }`}
+                        data-testid={`select-lender-btn-${m.rank}`}
+                      >
+                        {selectingLenderId === m.lender_id
+                          ? 'Selecting...'
+                          : isCurrent
+                          ? 'Selected'
+                          : 'Select Lender'}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
