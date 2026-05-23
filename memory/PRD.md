@@ -134,6 +134,25 @@ All P0 features delivered in MVP.
 - **Pipeline.js**: Added Kanban/List view toggle. Search bar visible ONLY in List view; client-side, real-time, case-insensitive; matches client first/last/full name and lender name. Empty-state with "Clear search" button.
 - **Commissions.js**: Search now matches client name, lender name, AND invoice_number (INV-YYYY-NNNN). Placeholder updated to "Search by client, lender or invoice #...".
 
+### Login Commission Summary Toast (23 May 2026)
+- **Trigger**: Fires after every successful login, non-blocking (does not delay redirect)
+- **Endpoint**: GET /api/commissions/reminders (response: {success, data:{overdue[], due_soon[]}})
+- **Toast**: Sonner toast.custom() with navy bg (#0A2342) + teal left border (#0E9F6E), 6s duration, top-right position
+- **Formats**: both overdue+due_soon / only overdue / only due_soon / silent (nothing shown if both empty)
+- **Click**: Navigates to /commissions and dismisses toast
+- **File**: /app/frontend/src/pages/Login.js
+
+### Extension 5: Manual Lender Match Filter (23 May 2026)
+- **Location**: Lenders page (/lenders) — client-side filtering, no new backend endpoints
+- **UI**: "Find a Lender" teal button added next to "Add Lender" (now navy)
+- **Panel**: 320px right-side slide-in overlay, z-index: 10000 (above Emergent badge at 9999), 20% opacity backdrop
+- **Inputs**: Loan Amount (£), Property Value (£), real-time LTV (teal, 1 decimal), Employment Type dropdown, Credit Profile dropdown
+- **Filtering Logic**: loan range (min_loan ≤ amount ≤ max_loan), max_ltv ≥ computed LTV, SE/Contractor/Adverse flags
+- **Sort**: Matched results sorted by proc_fee_purchase descending
+- **Results Pill**: teal (matches), red (none), grey (no filters); "Clear filter" link resets table
+- **Clear & Close**: Resets all inputs and restores full paginated table
+- **Pagination**: Hidden when filter is active
+
 ## Next Tasks (Open Backlog)
 1. Set up EMERGENT_LLM_KEY for document storage (P1)
 2. Email notifications for commission due dates (P1)

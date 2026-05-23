@@ -403,8 +403,8 @@ export function Lenders() {
       {/* Filter Panel Backdrop */}
       {filterOpen && (
         <div
-          className="fixed inset-0 z-40"
-          style={{ background: 'rgba(0,0,0,0.2)' }}
+          className="fixed inset-0"
+          style={{ background: 'rgba(0,0,0,0.2)', zIndex: 9999 }}
           onClick={() => setFilterOpen(false)}
           data-testid="filter-backdrop"
         />
@@ -412,12 +412,13 @@ export function Lenders() {
 
       {/* Filter Panel — slides in from the right */}
       <div
-        className="fixed right-0 top-0 h-full bg-white flex flex-col z-50"
+        className="fixed right-0 top-0 h-full bg-white flex flex-col"
         style={{
           width: '320px',
           borderLeft: '1px solid #D1D5DB',
           transform: filterOpen ? 'translateX(0)' : 'translateX(100%)',
           transition: 'transform 0.3s ease',
+          zIndex: 10000,
         }}
         data-testid="filter-panel"
       >
