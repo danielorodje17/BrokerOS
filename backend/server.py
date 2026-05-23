@@ -18,6 +18,7 @@ from routes import (
     cases_notes_router,
     documents_router,
     dashboard_router,
+    ai_router,
 )
 from routes.deps import db, hash_password, verify_password, init_storage, logger
 

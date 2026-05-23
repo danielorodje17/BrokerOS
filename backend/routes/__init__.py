@@ -7,6 +7,7 @@ from .commissions import router as commissions_router
 from .notes import router as notes_router, cases_notes_router
 from .documents import router as documents_router
 from .dashboard import router as dashboard_router
+from .ai import router as ai_router
 
 __all__ = [
     "auth_router",
@@ -19,4 +20,5 @@ __all__ = [
     "cases_notes_router",
     "documents_router",
     "dashboard_router",
+    "ai_router",
 ]
