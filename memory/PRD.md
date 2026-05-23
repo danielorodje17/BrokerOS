@@ -183,6 +183,16 @@ All P0 features delivered in MVP.
 - **Files**: `routes/ai.py`, `routes/__init__.py`, `server.py` (ai_router registered), `frontend/src/pages/CaseDetail.js`
 - **Tested**: 13/13 backend pytest + 100% frontend (iteration_7.json)
 
+### AI Feature 2: Lender Matching Engine (23 May 2026)
+- **Endpoint**: `POST /api/ai/lender-match` body `{case_id}` → `{success, data:{matches[], eligible_count, total_lenders, message}}`
+- **Hard filter** (deterministic, pre-Claude): excludes lenders where max_ltv<case.ltv, min/max_loan out of range, employment/credit incompatible (self_employed, contractor, adverse)
+- **Claude ranking**: `claude-sonnet-4-5` returns JSON array with rank, reason, watch_out per lender; merged with full lender data and re-numbered
+- **Fallback**: on Claude failure → eligible lenders sorted by proc_fee_purchase desc with reason="AI ranking unavailable"
+- **Lender selection**: `PATCH /api/cases/{case_id}/lender?lender_id=X` validates lender ownership, updates case, returns enriched case
+- **UI**: New "AI Lender Match" tab on CaseDetail; Find Best Lenders button → loading spinner → vertical ranked cards (navy rank badge, bold name, teal proc fee, AI reason, amber ⚠️ watch_out, processing/success metrics, Select Lender button). Current lender highlighted with teal left border + "Current Lender" badge. Empty state when no matches.
+- **Files**: `routes/ai.py` (+lender-match), `routes/cases.py` (+PATCH /lender), `frontend/src/pages/CaseDetail.js` (tabs + match UI)
+- **Tested**: 14/14 backend + 100% frontend (iteration_8.json)
+
 ## Next Tasks (Open Backlog)
 1. Document storage with Emergent Object Storage (P1)
 2. Email notifications for commission due dates (P1)
