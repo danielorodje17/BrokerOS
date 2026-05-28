@@ -28,6 +28,6 @@
   "seed_data_creation": "Tests create temporary lenders/clients/cases and self-clean. Note: pre-existing TEST_Lender_X and TEST_FilterLender_SE artefacts found in admin lender panel (from prior runs).",
   "retest_needed": false,
   "main_agent_can_self_test": true,
-  "context_for_next_testing_agent": "Backend test file at /app/backend/tests/test_ai_lender_match.py covers all lender-match + lender-PATCH scenarios; reuse for regression. KNOWN_CASE_ID=09ecdc6c-828e-4134-b316-9c112ccd2848 may now have lender_id set (test ran PATCH). Reset if needed via PATCH with null logic (currently endpoint requires existing lender). Frontend selector to use: tab-lender-match, find-best-lenders-btn, lender-match-card-{rank}, select-lender-btn-{rank}, watch-out-{rank}, rank-badge-{rank}.",
+  "context_for_next_testing_agent": "Backend test file at /app/backend/tests/test_ai_lender_match.py covers all lender-match + lender-PATCH scenarios; reuse for regression. KNOWN_CASE_ID=daily-broker-brief may now have lender_id set (test ran PATCH). Reset if needed via PATCH with null logic (currently endpoint requires existing lender). Frontend selector to use: tab-lender-match, find-best-lenders-btn, lender-match-card-{rank}, select-lender-btn-{rank}, watch-out-{rank}, rank-badge-{rank}.",
   "rca of the issue": "N/A — no defects found."
 }
