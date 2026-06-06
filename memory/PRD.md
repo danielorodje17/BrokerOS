@@ -36,6 +36,34 @@ BrokerOS is a web-based SaaS application for independent mortgage brokers in the
 - [x] Admin seeding on startup
 - [x] Brute force protection (5 attempts, 15 min lockout)
 
+## Platform Consistency Sprint (6 Jun 2026)
+
+### Task 1 — Firm/Tenant Layer
+- [x] `firms` collection created in MongoDB
+- [x] `create_firm_for_user()` helper in `deps.py`
+- [x] Register endpoint creates a firm and writes `firm_id` to user
+- [x] Startup migration (idempotent): existing users backfilled with `firm_id`
+- [x] Indexes: `firms.id` (unique), `firms.owner_id`
+
+### Task 2 — JWT Claims Update
+- [x] `create_access_token` extended with `firm_id` and `role` params
+- [x] All 3 call sites (register, login, refresh) pass `firm_id` and `role`
+- [x] 15-minute expiry unchanged
+
+### Task 3 — Standardised API Response Envelope
+- [x] All 9 route files return `{"success": bool, "data": <payload>, "message": str | None}`
+- [x] Auth responses keep all existing fields at root + add `"success": true`
+- [x] List endpoints: `data` = array, `total`/`page`/`limit` at root level
+
+### Task 4 — CLAUDE_MODEL Env Variable
+- [x] `CLAUDE_MODEL=claude-sonnet-4-6` added to `.env` and `deps.py`
+- [x] All 3 AI calls in `ai.py` use `CLAUDE_MODEL` (no more hardcoded string)
+
+### Frontend Consistency Fix
+- [x] All 7 pages updated to read `response.data` instead of `response` root
+- [x] Affected: Dashboard.js, Clients.js, Cases.js, Lenders.js, Commissions.js, Pipeline.js, CaseDetail.js
+- [x] Auth reads (login/register) left unchanged (fields remain at root)
+
 ### Client Management
 - [x] Full CRUD operations
 - [x] Client search
