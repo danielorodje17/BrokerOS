@@ -20,7 +20,7 @@ from routes import (
     dashboard_router,
     ai_router,
 )
-from routes.deps import db, hash_password, verify_password, init_storage, logger
+from routes.deps import db, hash_password, verify_password, init_storage, logger, create_firm_for_user
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -45,7 +45,32 @@ api_router.include_router(ai_router)
 # ========== STARTUP ==========
 @app.on_event("startup")
 async def startup():
+    # ── Firm migration (idempotent) ───────────────────────────────────────────
+    async def migrate_users_create_firms():
+        """Create a firm for every existing user that does not have one."""
+        users_without_firm = await db.users.find(
+            {"firm_id": {"$exists": False}}
+        ).to_list(5000)
+
+        if not users_without_firm:
+            logger.info("Firm migration: all users already have firm_id")
+            return
+
+        for user in users_without_firm:
+            user_id = str(user["_id"])
+            email = user.get("email", user_id)
+            firm = await create_firm_for_user(user_id, email)
+            await db.users.update_one(
+                {"_id": user["_id"]},
+                {"$set": {"firm_id": firm["id"]}}
+            )
+        logger.info(f"Firm migration: created firms for {len(users_without_firm)} users")
+
+    await migrate_users_create_firms()
+
     # Create indexes
+    await db.firms.create_index("id", unique=True)
+    await db.firms.create_index("owner_id")
     await db.users.create_index("email", unique=True)
     await db.login_attempts.create_index("identifier")
     await db.clients.create_index("user_id")

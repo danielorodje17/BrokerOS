@@ -86,6 +86,24 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
+import uuid as _uuid
+
+
+async def create_firm_for_user(owner_id: str, owner_email: str) -> dict:
+    """Create a firm document for a newly registered user."""
+    firm_id = str(_uuid.uuid4())
+    firm_doc = {
+        "id": firm_id,
+        "name": owner_email,          # placeholder — user can update later
+        "sector": "financial_services",
+        "owner_id": owner_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": "active",
+    }
+    await db.firms.insert_one(firm_doc)
+    return firm_doc
+
+
 def get_case_filter(current_user: dict) -> dict:
     """Returns a MongoDB filter restricting cases by broker for advisers only.
     Principals and admins receive an empty dict — they see all cases.

@@ -7,7 +7,8 @@ from .deps import (
     db, logger,
     hash_password, verify_password,
     create_access_token, create_refresh_token,
-    get_current_user, JWT_SECRET, JWT_ALGORITHM
+    get_current_user, JWT_SECRET, JWT_ALGORITHM,
+    create_firm_for_user,
 )
 from .models import UserRegister, UserLogin, UserUpdate, ForgotPassword, ResetPassword
 import jwt
@@ -37,6 +38,16 @@ async def register(user_data: UserRegister, response: Response):
     }
     result = await db.users.insert_one(user_doc)
     user_id = str(result.inserted_id)
+
+    # Create firm for this user
+    firm = await create_firm_for_user(user_id, email)
+    firm_id = firm["id"]
+
+    # Add firm_id to the user document
+    await db.users.update_one(
+        {"_id": result.inserted_id},
+        {"$set": {"firm_id": firm_id}}
+    )
 
     access_token = create_access_token(user_id, email)
     refresh_token = create_refresh_token(user_id)
