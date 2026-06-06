@@ -72,7 +72,7 @@ export function Lenders() {
       const params = new URLSearchParams({ page, limit: 20 });
       if (search) params.append('search', search);
       const { data } = await axios.get(`${API}/lenders?${params}`, { withCredentials: true });
-      setLenders(data.lenders);
+      setLenders(data.data);
       setTotal(data.total);
     } catch (error) {
       toast.error('Failed to load lenders');
@@ -177,7 +177,7 @@ export function Lenders() {
     setFilterOpen(false);
     try {
       const { data } = await axios.get(`${API}/lenders?page=1&limit=1000`, { withCredentials: true });
-      const allLenders = data.lenders;
+      const allLenders = data.data;
 
       const loan = parseFloat(filterForm.loanAmount);
       const prop = parseFloat(filterForm.propertyValue);

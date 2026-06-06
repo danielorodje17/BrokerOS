@@ -56,7 +56,7 @@ export function Pipeline() {
     setLoading(true);
     try {
       const { data } = await axios.get(`${API}/cases?limit=100`, { withCredentials: true });
-      setCases(data.cases);
+      setCases(data.data);
     } catch (error) {
       toast.error('Failed to load pipeline');
     } finally {

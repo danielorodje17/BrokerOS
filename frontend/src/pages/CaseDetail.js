@@ -96,7 +96,7 @@ export function CaseDetail() {
   const fetchCase = useCallback(async () => {
     try {
       const { data } = await axios.get(`${API}/cases/${caseId}`, { withCredentials: true });
-      setCaseData(data);
+      setCaseData(data.data);
     } catch (error) {
       toast.error('Failed to load case');
       navigate('/cases');
@@ -109,7 +109,7 @@ export function CaseDetail() {
     setNotesLoading(true);
     try {
       const { data } = await axios.get(`${API}/notes?case_id=${caseId}`, { withCredentials: true });
-      setNotes(data.notes);
+      setNotes(data.data);
     } catch (error) {
       console.error('Failed to load notes:', error);
     } finally {
@@ -159,7 +159,7 @@ export function CaseDetail() {
         { withCredentials: true }
       );
       // Optimistically update case data with new lender
-      setCaseData(prev => prev ? { ...prev, lender_id: lenderId, lender: data.lender } : prev);
+      setCaseData(prev => prev ? { ...prev, lender_id: lenderId, lender: data.data.lender } : prev);
       toast.success(`Lender updated to ${lenderName}`);
     } catch (error) {
       toast.error('Failed to update lender');

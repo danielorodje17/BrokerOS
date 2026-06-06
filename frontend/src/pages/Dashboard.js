@@ -40,7 +40,7 @@ export function Dashboard() {
   const fetchStats = async () => {
     try {
       const { data } = await axios.get(`${API}/dashboard/stats`, { withCredentials: true });
-      setStats(data);
+      setStats(data.data);
     } catch (error) {
       console.error('Failed to fetch stats:', error);
     } finally {
@@ -52,8 +52,8 @@ export function Dashboard() {
   const checkCachedBriefing = async () => {
     try {
       const { data } = await axios.get(`${API}/ai/daily-briefing?probe=true`, { withCredentials: true });
-      if (data.cached) {
-        setBriefing(data);
+      if (data.data?.cached) {
+        setBriefing(data.data);
       }
     } catch (error) {
       console.error('Failed to probe briefing:', error);
@@ -66,7 +66,7 @@ export function Dashboard() {
     setBriefingLoading(true);
     try {
       const { data } = await axios.get(`${API}/ai/daily-briefing`, { withCredentials: true });
-      setBriefing(data);
+      setBriefing(data.data);
     } catch (error) {
       console.error('Failed to generate briefing:', error);
     } finally {
@@ -79,7 +79,7 @@ export function Dashboard() {
     try {
       await axios.delete(`${API}/ai/daily-briefing`, { withCredentials: true });
       const { data } = await axios.get(`${API}/ai/daily-briefing`, { withCredentials: true });
-      setBriefing(data);
+      setBriefing(data.data);
     } catch (error) {
       console.error('Failed to regenerate briefing:', error);
     } finally {

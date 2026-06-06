@@ -106,7 +106,7 @@ export function Commissions() {
     setClawbackLoading(true);
     try {
       const { data } = await axios.get(`${API}/commissions/clawback-risk`, { withCredentials: true });
-      setClawbackData(data.commissions || []);
+      setClawbackData(data.data || []);
     } catch {
       // Non-critical — silently ignore
     } finally {
@@ -126,9 +126,9 @@ export function Commissions() {
         axios.get(`${API}/commissions/reminders`, { withCredentials: true })
       ]);
 
-      setCommissions(commissionsRes.data.commissions);
+      setCommissions(commissionsRes.data.data);
       setTotal(commissionsRes.data.total);
-      setCases(casesRes.data.cases);
+      setCases(casesRes.data.data);
 
       // Set reminders
       if (remindersRes.data.success) {
@@ -137,10 +137,10 @@ export function Commissions() {
 
       // Calculate summary
       const allCommissions = await axios.get(`${API}/commissions?limit=1000`, { withCredentials: true });
-      const pending = allCommissions.data.commissions
+      const pending = allCommissions.data.data
         .filter(c => c.status === 'pending' || c.status === 'invoiced')
         .reduce((sum, c) => sum + (c.expected_amount || 0), 0);
-      const received = allCommissions.data.commissions
+      const received = allCommissions.data.data
         .filter(c => c.status === 'received')
         .reduce((sum, c) => sum + (c.received_amount || 0), 0);
       setSummary({ pending, received });

@@ -78,7 +78,7 @@ export function Clients() {
       const params = new URLSearchParams({ page, limit: 20 });
       if (search) params.append('search', search);
       const { data } = await axios.get(`${API}/clients?${params}`, { withCredentials: true });
-      setClients(data.clients);
+      setClients(data.data);
       setTotal(data.total);
     } catch (error) {
       toast.error('Failed to load clients');

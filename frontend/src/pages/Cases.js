@@ -88,10 +88,10 @@ export function Cases() {
         axios.get(`${API}/lenders?limit=100`, { withCredentials: true })
       ]);
 
-      setCases(casesRes.data.cases);
+      setCases(casesRes.data.data);
       setTotal(casesRes.data.total);
-      setClients(clientsRes.data.clients);
-      setLenders(lendersRes.data.lenders);
+      setClients(clientsRes.data.data);
+      setLenders(lendersRes.data.data);
     } catch (error) {
       toast.error('Failed to load cases');
     } finally {
