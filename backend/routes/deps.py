@@ -41,10 +41,12 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 # ========== JWT TOKEN MANAGEMENT ==========
-def create_access_token(user_id: str, email: str) -> str:
+def create_access_token(user_id: str, email: str, firm_id: str = "", role: str = "") -> str:
     payload = {
         "sub": user_id,
         "email": email,
+        "firm_id": firm_id,
+        "role": role,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=15),
         "type": "access"
     }

@@ -49,7 +49,7 @@ async def register(user_data: UserRegister, response: Response):
         {"$set": {"firm_id": firm_id}}
     )
 
-    access_token = create_access_token(user_id, email)
+    access_token = create_access_token(user_id, email, firm_id=firm_id, role="adviser")
     refresh_token = create_refresh_token(user_id)
 
     response.set_cookie(key="access_token", value=access_token, httponly=True, secure=False, samesite="lax", max_age=900, path="/")
@@ -98,7 +98,9 @@ async def login(user_data: UserLogin, request: Request, response: Response):
     await db.users.update_one({"_id": user["_id"]}, {"$set": {"last_login": datetime.now(timezone.utc).isoformat()}})
 
     user_id = str(user["_id"])
-    access_token = create_access_token(user_id, email)
+    firm_id = user.get("firm_id", "") or ""
+    role = user.get("role", "adviser")
+    access_token = create_access_token(user_id, email, firm_id=firm_id, role=role)
     refresh_token = create_refresh_token(user_id)
 
     response.set_cookie(key="access_token", value=access_token, httponly=True, secure=False, samesite="lax", max_age=900, path="/")
@@ -141,7 +143,9 @@ async def refresh_token(request: Request, response: Response):
             raise HTTPException(status_code=401, detail="User not found")
 
         user_id = str(user["_id"])
-        access_token = create_access_token(user_id, user["email"])
+        firm_id = user.get("firm_id", "") or ""
+        role = user.get("role", "adviser")
+        access_token = create_access_token(user_id, user["email"], firm_id=firm_id, role=role)
         response.set_cookie(key="access_token", value=access_token, httponly=True, secure=False, samesite="lax", max_age=900, path="/")
         return {"message": "Token refreshed"}
     except jwt.ExpiredSignatureError:
