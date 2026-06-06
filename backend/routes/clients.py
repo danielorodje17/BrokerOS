@@ -26,7 +26,7 @@ async def list_clients(
 
     total = await db.clients.count_documents(query)
     clients = await db.clients.find(query, {"_id": 0}).skip((page-1)*limit).limit(limit).to_list(limit)
-    return {"clients": clients, "total": total, "page": page, "limit": limit}
+    return {"success": True, "data": clients, "total": total, "page": page, "limit": limit, "message": None}
 
 
 @router.post("")
@@ -38,7 +38,7 @@ async def create_client(data: ClientCreate, user: dict = Depends(get_current_use
     client_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.clients.insert_one(client_doc)
     client_doc.pop("_id", None)
-    return client_doc
+    return {"success": True, "data": client_doc, "message": None}
 
 
 @router.get("/{client_id}")
@@ -46,7 +46,7 @@ async def get_client(client_id: str, user: dict = Depends(get_current_user)):
     client = await db.clients.find_one({"id": client_id, "user_id": user["id"]}, {"_id": 0})
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-    return client
+    return {"success": True, "data": client, "message": None}
 
 
 @router.put("/{client_id}")
@@ -59,7 +59,8 @@ async def update_client(client_id: str, data: ClientCreate, user: dict = Depends
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Client not found")
-    return await db.clients.find_one({"id": client_id}, {"_id": 0})
+    updated = await db.clients.find_one({"id": client_id}, {"_id": 0})
+    return {"success": True, "data": updated, "message": None}
 
 
 @router.delete("/{client_id}")
@@ -67,4 +68,4 @@ async def delete_client(client_id: str, user: dict = Depends(get_current_user)):
     result = await db.clients.delete_one({"id": client_id, "user_id": user["id"]})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Client not found")
-    return {"message": "Client deleted"}
+    return {"success": True, "data": None, "message": "Client deleted"}

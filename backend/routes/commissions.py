@@ -132,7 +132,7 @@ async def list_clawback_risk_commissions(user: dict = Depends(get_current_user))
             comm["days_remaining"] = None
             comm["clawback_risk_until_formatted"] = risk_date_str or "-"
 
-    return {"commissions": commissions, "total": len(commissions)}
+    return {"success": True, "data": commissions, "total": len(commissions), "message": None}
 
 
 @router.get("")
@@ -168,7 +168,7 @@ async def list_commissions(
             comm["lender_name"] = lender["name"] if lender else "Unknown"
             comm["loan_amount"] = case.get("loan_amount")
 
-    return {"commissions": commissions, "total": total, "page": page, "limit": limit}
+    return {"success": True, "data": commissions, "total": total, "page": page, "limit": limit, "message": None}
 
 
 @router.post("")
@@ -185,7 +185,7 @@ async def create_commission(data: CommissionCreate, user: dict = Depends(get_cur
     comm_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.commission_records.insert_one(comm_doc)
     comm_doc.pop("_id", None)
-    return comm_doc
+    return {"success": True, "data": comm_doc, "message": None}
 
 
 @router.put("/{commission_id}")
@@ -198,7 +198,8 @@ async def update_commission(commission_id: str, data: CommissionCreate, user: di
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Commission not found")
-    return await db.commission_records.find_one({"id": commission_id}, {"_id": 0})
+    updated = await db.commission_records.find_one({"id": commission_id}, {"_id": 0})
+    return {"success": True, "data": updated, "message": None}
 
 
 @router.delete("/{commission_id}")
@@ -206,7 +207,7 @@ async def delete_commission(commission_id: str, user: dict = Depends(get_current
     result = await db.commission_records.delete_one({"id": commission_id, "user_id": user["id"]})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Commission not found")
-    return {"message": "Commission deleted"}
+    return {"success": True, "data": None, "message": "Commission deleted"}
 
 
 # ========== INVOICE GENERATION ==========

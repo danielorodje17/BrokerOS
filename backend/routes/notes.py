@@ -18,7 +18,7 @@ async def list_notes(case_id: str = Query(...), user: dict = Depends(get_current
     if user.get("role") == "adviser" and case.get("assigned_broker_id") != user["id"]:
         raise HTTPException(status_code=403, detail={"success": False, "error": "Access denied"})
     notes = await db.notes.find({"case_id": case_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
-    return {"notes": notes, "total": len(notes)}
+    return {"success": True, "data": notes, "total": len(notes), "message": None}
 
 
 @router.post("")
@@ -49,7 +49,7 @@ async def create_note(data: NoteCreate, user: dict = Depends(get_current_user)):
     }
     await db.notes.insert_one(note_doc)
     note_doc.pop("_id", None)
-    return note_doc
+    return {"success": True, "data": note_doc, "message": None}
 
 
 # Also provide case-specific notes endpoint
@@ -65,4 +65,4 @@ async def list_case_notes(case_id: str, user: dict = Depends(get_current_user)):
     if user.get("role") == "adviser" and case.get("assigned_broker_id") != user["id"]:
         raise HTTPException(status_code=403, detail={"success": False, "error": "Access denied"})
     notes = await db.notes.find({"case_id": case_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
-    return {"notes": notes, "total": len(notes)}
+    return {"success": True, "data": notes, "total": len(notes), "message": None}

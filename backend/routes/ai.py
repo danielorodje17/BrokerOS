@@ -11,7 +11,7 @@ import re
 import logging
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
-from .deps import db, get_current_user, get_case_filter
+from .deps import db, get_current_user, get_case_filter, CLAUDE_MODEL
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 logger = logging.getLogger(__name__)
@@ -141,7 +141,7 @@ async def borrower_score(body: BorrowerScoreRequest, user: dict = Depends(get_cu
             api_key=EMERGENT_LLM_KEY,
             session_id=str(uuid.uuid4()),
             system_message="You are a UK mortgage broker assistant providing concise, professional analysis.",
-        ).with_model("anthropic", "claude-sonnet-4-5")
+        ).with_model("anthropic", CLAUDE_MODEL)
 
         summary = await chat.send_message(UserMessage(text=prompt))
     except Exception as e:
@@ -157,6 +157,7 @@ async def borrower_score(body: BorrowerScoreRequest, user: dict = Depends(get_cu
             "summary": summary,
             "breakdown": breakdown,
         },
+        "message": None,
     }
 
 
@@ -269,6 +270,7 @@ async def lender_match(body: LenderMatchRequest, user: dict = Depends(get_curren
                 "total_lenders": total_lenders,
                 "message": "No lenders on your panel match this case's criteria. Consider reviewing the case details or expanding your lender panel.",
             },
+            "message": None,
         }
 
     # ── Build Claude prompt ───────────────────────────────
@@ -312,7 +314,7 @@ async def lender_match(body: LenderMatchRequest, user: dict = Depends(get_curren
             api_key=EMERGENT_LLM_KEY,
             session_id=str(uuid.uuid4()),
             system_message="You are a UK mortgage broker assistant providing concise lender-fit analysis. Always respond with valid JSON arrays only.",
-        ).with_model("anthropic", "claude-sonnet-4-5")
+        ).with_model("anthropic", CLAUDE_MODEL)
 
         raw = await chat.send_message(UserMessage(text=prompt))
         parsed = _parse_claude_json(raw)
@@ -358,6 +360,7 @@ async def lender_match(body: LenderMatchRequest, user: dict = Depends(get_curren
             "total_lenders": total_lenders,
             "message": None,
         },
+        "message": None,
     }
 
 
@@ -414,12 +417,16 @@ async def daily_briefing(probe: bool = False, user: dict = Depends(get_current_u
     )
     if cached:
         return {
-            "briefing": cached["briefing"],
-            "generated_at": cached["generated_at"],
-            "cached": True,
+            "success": True,
+            "data": {
+                "briefing": cached["briefing"],
+                "generated_at": cached["generated_at"],
+                "cached": True,
+            },
+            "message": None,
         }
     if probe:
-        return {"briefing": None, "generated_at": None, "cached": False}
+        return {"success": True, "data": {"briefing": None, "generated_at": None, "cached": False}, "message": None}
 
     # ── Fetch active cases ───────────────────────────────
     case_filter = {**get_case_filter(user), "stage": {"$in": ACTIVE_STAGES}}
@@ -551,7 +558,7 @@ async def daily_briefing(probe: bool = False, user: dict = Depends(get_current_u
             api_key=EMERGENT_LLM_KEY,
             session_id=str(uuid.uuid4()),
             system_message="You are a UK mortgage broker assistant writing personalised, professional daily briefings.",
-        ).with_model("anthropic", "claude-sonnet-4-5")
+        ).with_model("anthropic", CLAUDE_MODEL)
 
         briefing_text = await chat.send_message(UserMessage(text=prompt))
     except Exception as e:
@@ -579,9 +586,13 @@ async def daily_briefing(probe: bool = False, user: dict = Depends(get_current_u
     )
 
     return {
-        "briefing": briefing_text,
-        "generated_at": generated_at,
-        "cached": False,
+        "success": True,
+        "data": {
+            "briefing": briefing_text,
+            "generated_at": generated_at,
+            "cached": False,
+        },
+        "message": None,
     }
 
 
@@ -590,4 +601,4 @@ async def regenerate_daily_briefing(user: dict = Depends(get_current_user)):
     """Clear today's cached briefing so the next GET regenerates it."""
     today_iso = datetime.now(timezone.utc).date().isoformat()
     await db.daily_briefings.delete_one({"user_id": user["id"], "date": today_iso})
-    return {"success": True, "message": "Briefing cache cleared"}
+    return {"success": True, "data": None, "message": "Briefing cache cleared"}

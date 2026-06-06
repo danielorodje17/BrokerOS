@@ -45,7 +45,7 @@ async def upload_document(
         }
         await db.documents.insert_one(doc)
         doc.pop("_id", None)
-        return doc
+        return {"success": True, "data": doc, "message": None}
     except Exception as e:
         logger.error(f"Upload failed: {e}")
         raise HTTPException(status_code=500, detail="Upload failed")
@@ -64,7 +64,7 @@ async def list_documents(
         query["case_id"] = case_id
 
     docs = await db.documents.find(query, {"_id": 0}).to_list(100)
-    return {"documents": docs}
+    return {"success": True, "data": docs, "message": None}
 
 
 @router.get("/documents/{doc_id}/download")
@@ -90,4 +90,4 @@ async def delete_document(doc_id: str, user: dict = Depends(get_current_user)):
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Document not found")
-    return {"message": "Document deleted"}
+    return {"success": True, "data": None, "message": "Document deleted"}

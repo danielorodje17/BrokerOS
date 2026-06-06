@@ -22,6 +22,8 @@ db = client[os.environ.get('DB_NAME', 'brokeros')]
 JWT_SECRET = os.environ.get('JWT_SECRET', 'brokeros_secure_jwt_secret_key_64chars_0123456789abcdef0123456789')
 JWT_ALGORITHM = "HS256"
 
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+
 # Storage Configuration
 STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")

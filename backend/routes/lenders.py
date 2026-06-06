@@ -22,7 +22,7 @@ async def list_lenders(
 
     total = await db.lenders.count_documents(query)
     lenders = await db.lenders.find(query, {"_id": 0}).skip((page-1)*limit).limit(limit).to_list(limit)
-    return {"lenders": lenders, "total": total, "page": page, "limit": limit}
+    return {"success": True, "data": lenders, "total": total, "page": page, "limit": limit, "message": None}
 
 
 @router.post("")
@@ -34,7 +34,7 @@ async def create_lender(data: LenderCreate, user: dict = Depends(get_current_use
     lender_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.lenders.insert_one(lender_doc)
     lender_doc.pop("_id", None)
-    return lender_doc
+    return {"success": True, "data": lender_doc, "message": None}
 
 
 @router.get("/{lender_id}")
@@ -42,7 +42,7 @@ async def get_lender(lender_id: str, user: dict = Depends(get_current_user)):
     lender = await db.lenders.find_one({"id": lender_id, "user_id": user["id"]}, {"_id": 0})
     if not lender:
         raise HTTPException(status_code=404, detail="Lender not found")
-    return lender
+    return {"success": True, "data": lender, "message": None}
 
 
 @router.put("/{lender_id}")
@@ -55,7 +55,8 @@ async def update_lender(lender_id: str, data: LenderCreate, user: dict = Depends
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Lender not found")
-    return await db.lenders.find_one({"id": lender_id}, {"_id": 0})
+    updated = await db.lenders.find_one({"id": lender_id}, {"_id": 0})
+    return {"success": True, "data": updated, "message": None}
 
 
 @router.delete("/{lender_id}")
@@ -63,4 +64,4 @@ async def delete_lender(lender_id: str, user: dict = Depends(get_current_user)):
     result = await db.lenders.delete_one({"id": lender_id, "user_id": user["id"]})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Lender not found")
-    return {"message": "Lender deleted"}
+    return {"success": True, "data": None, "message": "Lender deleted"}

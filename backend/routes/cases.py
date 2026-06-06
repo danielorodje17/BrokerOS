@@ -45,7 +45,7 @@ async def list_cases(
             lender = await db.lenders.find_one({"id": case["lender_id"]}, {"_id": 0, "name": 1})
             case["lender_name"] = lender["name"] if lender else None
 
-    return {"cases": cases, "total": total, "page": page, "limit": limit}
+    return {"success": True, "data": cases, "total": total, "page": page, "limit": limit, "message": None}
 
 
 @router.post("")
@@ -72,7 +72,7 @@ async def create_case(data: CaseCreate, user: dict = Depends(get_current_user)):
 
     await db.cases.insert_one(case_doc)
     case_doc.pop("_id", None)
-    return case_doc
+    return {"success": True, "data": case_doc, "message": None}
 
 
 @router.get("/{case_id}")
@@ -89,7 +89,7 @@ async def get_case(case_id: str, user: dict = Depends(get_current_user)):
         lender = await db.lenders.find_one({"id": case["lender_id"]}, {"_id": 0})
         case["lender"] = lender
 
-    return case
+    return {"success": True, "data": case, "message": None}
 
 
 @router.put("/{case_id}")
@@ -111,7 +111,8 @@ async def update_case(case_id: str, data: CaseCreate, user: dict = Depends(get_c
         update_doc["stage_updated_at"] = datetime.now(timezone.utc).isoformat()
 
     await db.cases.update_one({"id": case_id}, {"$set": update_doc})
-    return await db.cases.find_one({"id": case_id}, {"_id": 0})
+    updated = await db.cases.find_one({"id": case_id}, {"_id": 0})
+    return {"success": True, "data": updated, "message": None}
 
 
 @router.patch("/{case_id}/stage")
@@ -130,7 +131,8 @@ async def update_case_stage(case_id: str, stage: str = Query(...), user: dict = 
         update_doc["actual_completion_date"] = datetime.now(timezone.utc).isoformat()
 
     await db.cases.update_one({"id": case_id}, {"$set": update_doc})
-    return await db.cases.find_one({"id": case_id}, {"_id": 0})
+    updated = await db.cases.find_one({"id": case_id}, {"_id": 0})
+    return {"success": True, "data": updated, "message": None}
 
 
 @router.patch("/{case_id}/lender")
@@ -150,7 +152,7 @@ async def update_case_lender(case_id: str, lender_id: str = Query(...), user: di
     )
     updated = await db.cases.find_one({"id": case_id}, {"_id": 0})
     updated["lender"] = lender
-    return updated
+    return {"success": True, "data": updated, "message": None}
 
 
 @router.delete("/{case_id}")
@@ -161,4 +163,4 @@ async def delete_case(case_id: str, user: dict = Depends(get_current_user)):
     _check_adviser_access(user, existing)
 
     await db.cases.delete_one({"id": case_id})
-    return {"message": "Case deleted"}
+    return {"success": True, "data": None, "message": "Case deleted"}

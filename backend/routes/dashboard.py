@@ -80,22 +80,26 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
         })
 
     return {
-        "clients_count": clients_count,
-        "cases_count": cases_count,
-        "pipeline": pipeline,
-        "commissions": {
-            "pending": pending_total,
-            "received": received_total
+        "success": True,
+        "data": {
+            "clients_count": clients_count,
+            "cases_count": cases_count,
+            "pipeline": pipeline,
+            "commissions": {
+                "pending": pending_total,
+                "received": received_total
+            },
+            "alerts": {
+                "overdue_count": overdue_count,
+                "due_soon_count": due_soon_count,
+                "clawback_risk_count": clawback_risk_count,
+            },
+            "recent_cases": recent_cases,
         },
-        "alerts": {
-            "overdue_count": overdue_count,
-            "due_soon_count": due_soon_count,
-            "clawback_risk_count": clawback_risk_count,
-        },
-        "recent_cases": recent_cases,
+        "message": None,
     }
 
 
 @router.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {"success": True, "data": {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}, "message": None}

@@ -56,6 +56,7 @@ async def register(user_data: UserRegister, response: Response):
     response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=False, samesite="lax", max_age=604800, path="/")
 
     return {
+        "success": True,
         "id": user_id,
         "email": email,
         "first_name": user_data.first_name,
@@ -107,6 +108,7 @@ async def login(user_data: UserLogin, request: Request, response: Response):
     response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=False, samesite="lax", max_age=604800, path="/")
 
     return {
+        "success": True,
         "id": user_id,
         "email": user["email"],
         "first_name": user.get("first_name", ""),
@@ -121,12 +123,12 @@ async def login(user_data: UserLogin, request: Request, response: Response):
 async def logout(response: Response):
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("refresh_token", path="/")
-    return {"message": "Logged out successfully"}
+    return {"success": True, "data": None, "message": "Logged out successfully"}
 
 
 @router.get("/me")
 async def get_me(user: dict = Depends(get_current_user)):
-    return user
+    return {"success": True, "data": user, "message": None}
 
 
 @router.post("/refresh")
@@ -147,7 +149,7 @@ async def refresh_token(request: Request, response: Response):
         role = user.get("role", "adviser")
         access_token = create_access_token(user_id, user["email"], firm_id=firm_id, role=role)
         response.set_cookie(key="access_token", value=access_token, httponly=True, secure=False, samesite="lax", max_age=900, path="/")
-        return {"message": "Token refreshed"}
+        return {"success": True, "data": None, "message": "Token refreshed"}
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Refresh token expired")
     except jwt.InvalidTokenError:
@@ -167,7 +169,7 @@ async def forgot_password(data: ForgotPassword):
             "used": False
         })
         logger.info(f"Password reset link: /reset-password?token={token}")
-    return {"message": "If the email exists, a reset link has been sent"}
+    return {"success": True, "data": None, "message": "If the email exists, a reset link has been sent"}
 
 
 @router.post("/reset-password")
@@ -182,7 +184,7 @@ async def reset_password(data: ResetPassword):
     hashed = hash_password(data.new_password)
     await db.users.update_one({"_id": ObjectId(reset_doc["user_id"])}, {"$set": {"password_hash": hashed}})
     await db.password_reset_tokens.update_one({"token": data.token}, {"$set": {"used": True}})
-    return {"message": "Password reset successfully"}
+    return {"success": True, "data": None, "message": "Password reset successfully"}
 
 
 @router.get("/team/members")
@@ -193,7 +195,7 @@ async def get_team_members(user: dict = Depends(get_current_user)):
 
     team_id = user.get("team_id")
     if not team_id:
-        return {"success": True, "data": []}
+        return {"success": True, "data": [], "message": None}
 
     members_raw = await db.users.find(
         {"team_id": team_id},
@@ -210,7 +212,7 @@ async def get_team_members(user: dict = Depends(get_current_user)):
         }
         for m in members_raw
     ]
-    return {"success": True, "data": data}
+    return {"success": True, "data": data, "message": None}
 
 
 # User profile endpoints
@@ -240,10 +242,10 @@ async def update_profile(data: UserUpdate, user: dict = Depends(get_current_user
 
     updated = await db.users.find_one({"_id": ObjectId(user["id"])}, {"_id": 0, "password_hash": 0})
     updated["id"] = user["id"]
-    return updated
+    return {"success": True, "data": updated, "message": None}
 
 
 @users_router.put("/me/onboarding")
 async def complete_onboarding(user: dict = Depends(get_current_user)):
     await db.users.update_one({"_id": ObjectId(user["id"])}, {"$set": {"onboarding_completed": True}})
-    return {"message": "Onboarding completed"}
+    return {"success": True, "data": None, "message": "Onboarding completed"}
