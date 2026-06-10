@@ -614,3 +614,97 @@ async def regenerate_daily_briefing(user: dict = Depends(get_current_user)):
     today_iso = datetime.now(timezone.utc).date().isoformat()
     await db.daily_briefings.delete_one({"user_id": user["id"], "date": today_iso})
     return {"success": True, "data": {"cleared": True}, "message": None}
+
+
+# ─────────────────────────────────────────────────────────
+# AI Feature 4 — AI Assistant Chat
+# ─────────────────────────────────────────────────────────
+
+class ChatHistoryItem(BaseModel):
+    role: str   # "user" or "assistant"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    conversation_history: list[ChatHistoryItem] = []
+
+
+@router.post("/chat")
+async def ai_chat(request: ChatRequest, user: dict = Depends(get_current_user)):
+    """
+    POST /api/ai/chat
+    Stateless chat endpoint — full conversation history passed client-side.
+    """
+    today = datetime.now(timezone.utc).date()
+    today_display = today.strftime("%A, %d %B %Y")
+
+    # ── Build broker context ──────────────────────────────
+    case_filter = {**get_case_filter(user), "stage": {"$nin": ["completion", "declined"]}}
+    active_case_count = await db.cases.count_documents(case_filter)
+
+    fourteen_days_later = today + timedelta(days=14)
+    thirty_days_ago = today - timedelta(days=30)
+    pending_comms = await db.commission_records.find(
+        {"user_id": user["id"], "status": {"$ne": "received"}, "expected_payment_date": {"$ne": None}},
+        {"_id": 0, "expected_payment_date": 1},
+    ).to_list(1000)
+
+    overdue_count = 0
+    due_soon_count = 0
+    for c in pending_comms:
+        d = _parse_iso_date(c.get("expected_payment_date"))
+        if not d:
+            continue
+        if today <= d <= fourteen_days_later:
+            due_soon_count += 1
+        elif d < thirty_days_ago:
+            overdue_count += 1
+
+    # ── System prompt ────────────────────────────────────
+    first_name = user.get("first_name", "")
+    last_name = user.get("last_name", "")
+    fca_number = user.get("fca_number") or "Not provided"
+
+    system_prompt = (
+        "You are BrokerOS AI, an intelligent assistant for UK mortgage brokers. "
+        "You help brokers manage their pipeline, understand lender criteria, "
+        "draft client communications, and navigate mortgage processes.\n\n"
+        f"Broker: {first_name} {last_name}, FCA Number: {fca_number}\n"
+        f"Today's date: {today_display}\n"
+        f"Active cases: {active_case_count}\n"
+        f"Overdue commissions: {overdue_count}\n"
+        f"Commission due this week: {due_soon_count}\n\n"
+        "You have knowledge of UK mortgage markets, standard FCA broker regulations, "
+        "and typical broker workflows. Be concise, professional, and use British English. "
+        "Keep responses focused and practical.\n\n"
+        "When asked about specific cases or clients by name, explain that you don't have "
+        "direct database access in this chat and suggest the broker uses the relevant page "
+        "in BrokerOS to look them up.\n\n"
+        "Important: never give specific financial advice or recommend specific products to "
+        "end clients. Always note that the broker should apply their own professional "
+        "judgement and comply with their FCA obligations."
+    )
+
+    # ── Call Claude ──────────────────────────────────────
+    try:
+        initial_messages = [
+            {"role": item.role, "content": item.content}
+            for item in request.conversation_history
+        ]
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=str(uuid.uuid4()),
+            system_message=system_prompt,
+            initial_messages=initial_messages or None,
+        ).with_model("anthropic", "claude-sonnet-4-5")
+
+        response_text = await chat.send_message(UserMessage(text=request.message))
+    except Exception as e:
+        logger.exception("Claude chat call failed: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail={"success": False, "error": "AI assistant unavailable — please try again"},
+        )
+
+    return {"success": True, "data": {"response": response_text}, "message": None}
