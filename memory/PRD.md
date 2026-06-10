@@ -74,7 +74,18 @@ BrokerOS is a web-based SaaS application for independent mortgage brokers in the
 - [x] Section labels: teal uppercase 11px; TODAY'S PRIORITIES + WATCH LIST as `<ol>`; SUMMARY + CLOSING NOTE as `<p>`
 - [x] `briefingError` state with red card + "Try Again" button
 - [x] Regenerate link clears cache and re-generates
-- [x] Full CRUD operations
+
+### AI Feature 4 — AI Assistant Chat (10 Jun 2026)
+- [x] `POST /api/ai/chat` — broker context (case count, commissions) + full history replay via `initial_messages`
+- [x] Model: claude-sonnet-4-5, stateless, HTTP 503 on failure
+- [x] `AiChat.js` floating panel — persists in `Layout.js` across all navigation
+- [x] Floating teal button (56px), z-index 8000, panel 380×520px
+- [x] Welcome message on first open (filtered from API history via `isWelcome` flag)
+- [x] Typing indicator (3-dot animation), send on Enter, Shift+Enter newline
+- [x] Error bubble on failed Claude call (red border, not appended to history)
+- [x] `CLAUDE_MODEL` updated to claude-sonnet-4-5 for all AI calls
+
+
 - [x] Client search
 - [x] Employment type tracking
 - [x] Credit profile (clean/minor_issues/adverse)
