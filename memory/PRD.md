@@ -253,14 +253,23 @@ All P0 features delivered in MVP.
 - **Files**: `routes/ai.py` (+daily-briefing GET/DELETE), `frontend/src/pages/Dashboard.js`
 - **Tested**: 13/13 backend + 13/13 frontend (iteration_9.json)
 
+### Phase 2.5 — Rate Expiry & Retention Module (11 Jun 2026)
+- [x] Schema: `rate_expiry_date` + `retention_status` fields on `cases`
+- [x] `GET /api/retention/cases` — completed cases with rate_expiry_date, window/status filters, summary stats
+- [x] `PATCH /api/retention/cases/{case_id}/status` — update to none/flagged/contacted/new_case_created
+- [x] `GET /api/retention/alerts` — cases expiring within 30 days (none/flagged status only)
+- [x] `Retention.js` — full pipeline page: summary cards, filter bar, colour-coded table, Mark Contacted, Create Case modal, View Case
+- [x] Sidebar: Retention nav item with live badge count (expiring_90_days + already_expired)
+- [x] Login toast: fires on login when retention alerts exist (cases ≤30 days to expiry)
+- [x] Tested: 21/21 backend pytest + 100% frontend (iteration_13.json)
+
 ## Next Tasks (Open Backlog)
-1. Document storage with Emergent Object Storage (P1)
-2. Email notifications for commission due dates (P1)
-3. Phase 2 AI Features 2, 3, 4 (awaiting specs from user) (P1)
-4. Team management UI — invite advisers, assign team_id, set roles (P1)
-5. Server-side search on Commissions & Pipeline (currently client-side, filters current page only)
-6. Reduce N+1 queries in reminders/clawback/cases list endpoints via $lookup
-7. Commission reminders/clawback-risk to respect team scope for admins (currently personal view)
-8. Borrower Score: cache result per client_id with manual invalidation on Recalculate (avoid LLM call on every recalculate)
-9. Refactor CaseDetail.js — extract BorrowerScoreCard and NotesTimeline into separate components (~510 lines)
+1. Team management UI — invite advisers, assign team_id, set roles (P1) [HIGHEST PRIORITY — permission layer exists but broker filter useless without this]
+2. Email notifications for commission due dates via Resend (P1) — daily digest: overdue + due-within-14-days
+3. Document upload/download with Emergent Object Storage (P1) — documents tab on client page is currently dead
+4. Server-side search on Commissions & Pipeline (currently client-side, filters current page only) (P2)
+5. Reduce N+1 queries in reminders/clawback/cases list endpoints via $lookup (P2)
+6. Commission reminders/clawback-risk to respect team scope for admins (currently personal view) (P2)
+7. Borrower Score: cache result per client_id with manual invalidation on Recalculate (P3)
+8. Refactor CaseDetail.js — extract BorrowerScoreCard and NotesTimeline into separate components (~510 lines) (P3)
 
