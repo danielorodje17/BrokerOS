@@ -64,7 +64,16 @@ BrokerOS is a web-based SaaS application for independent mortgage brokers in the
 - [x] Affected: Dashboard.js, Clients.js, Cases.js, Lenders.js, Commissions.js, Pipeline.js, CaseDetail.js
 - [x] Auth reads (login/register) left unchanged (fields remain at root)
 
-### Client Management
+### AI Feature 3 — Daily Briefing (10 Jun 2026)
+- [x] `GET /api/ai/daily-briefing` — cache check → context gather → Claude call → cache → return
+- [x] `?probe=true` fast path (no Claude, <150ms) — returns `{cached:bool}`
+- [x] `DELETE /api/ai/daily-briefing` — clears today's cache, returns `{data:{cleared:true}}`
+- [x] Claude prompt uses exact 4-section format: SUMMARY, TODAY'S PRIORITIES, WATCH LIST, CLOSING NOTE
+- [x] Error handling: HTTP 503 on Claude failure, never caches failed responses
+- [x] Frontend: 4 states (Generate button, spinner, 4-section render, error card)
+- [x] Section labels: teal uppercase 11px; TODAY'S PRIORITIES + WATCH LIST as `<ol>`; SUMMARY + CLOSING NOTE as `<p>`
+- [x] `briefingError` state with red card + "Try Again" button
+- [x] Regenerate link clears cache and re-generates
 - [x] Full CRUD operations
 - [x] Client search
 - [x] Employment type tracking
