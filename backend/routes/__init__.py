@@ -8,6 +8,7 @@ from .notes import router as notes_router, cases_notes_router
 from .documents import router as documents_router
 from .dashboard import router as dashboard_router
 from .ai import router as ai_router
+from .retention import router as retention_router
 
 __all__ = [
     "auth_router",
@@ -21,4 +22,5 @@ __all__ = [
     "documents_router",
     "dashboard_router",
     "ai_router",
+    "retention_router",
 ]

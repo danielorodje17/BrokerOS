@@ -29,52 +29,89 @@ export function Login() {
 
     if (result.success) {
       navigate(from, { replace: true });
-      // Background: fire reminders check — must not block navigation
-      axios.get(`${API}/commissions/reminders`, { withCredentials: true })
-        .then(({ data }) => {
-          const reminders = data.data;
+      // Background: fire both reminders checks in parallel — must not block navigation
+      Promise.all([
+        axios.get(`${API}/commissions/reminders`, { withCredentials: true }).catch(() => null),
+        axios.get(`${API}/retention/alerts`, { withCredentials: true }).catch(() => null),
+      ]).then(([commissionsRes, retentionRes]) => {
+        // Commission toast
+        if (commissionsRes) {
+          const reminders = commissionsRes.data?.data;
           const overdueCount = reminders?.overdue?.length ?? 0;
           const dueSoonCount = reminders?.due_soon?.length ?? 0;
-          if (overdueCount === 0 && dueSoonCount === 0) return;
-
-          let message;
-          if (overdueCount > 0 && dueSoonCount > 0) {
-            message = `💰 ${overdueCount} commission(s) overdue · ${dueSoonCount} due this week — check Commission Tracker`;
-          } else if (overdueCount > 0) {
-            message = `⚠️ ${overdueCount} commission(s) overdue — check Commission Tracker`;
-          } else {
-            message = `📅 ${dueSoonCount} commission(s) due this week — check Commission Tracker`;
+          if (overdueCount > 0 || dueSoonCount > 0) {
+            let message;
+            if (overdueCount > 0 && dueSoonCount > 0) {
+              message = `💰 ${overdueCount} commission(s) overdue · ${dueSoonCount} due this week — check Commission Tracker`;
+            } else if (overdueCount > 0) {
+              message = `⚠️ ${overdueCount} commission(s) overdue — check Commission Tracker`;
+            } else {
+              message = `📅 ${dueSoonCount} commission(s) due this week — check Commission Tracker`;
+            }
+            toast.custom(
+              (t) => (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => { toast.dismiss(t); navigate('/commissions'); }}
+                  onKeyDown={(e) => e.key === 'Enter' && navigate('/commissions')}
+                  style={{
+                    cursor: 'pointer',
+                    background: '#0A2342',
+                    color: 'white',
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    borderLeft: '4px solid #0E9F6E',
+                    fontSize: '14px',
+                    lineHeight: '1.5',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                    minWidth: '300px',
+                    maxWidth: '420px',
+                  }}
+                  data-testid="commission-reminder-toast"
+                >
+                  {message}
+                </div>
+              ),
+              { duration: 6000, position: 'top-right' }
+            );
           }
+        }
 
-          toast.custom(
-            (t) => (
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => { toast.dismiss(t); navigate('/commissions'); }}
-                onKeyDown={(e) => e.key === 'Enter' && navigate('/commissions')}
-                style={{
-                  cursor: 'pointer',
-                  background: '#0A2342',
-                  color: 'white',
-                  padding: '12px 16px',
-                  borderRadius: '8px',
-                  borderLeft: '4px solid #0E9F6E',
-                  fontSize: '14px',
-                  lineHeight: '1.5',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-                  minWidth: '300px',
-                  maxWidth: '420px',
-                }}
-                data-testid="commission-reminder-toast"
-              >
-                {message}
-              </div>
-            ),
-            { duration: 6000, position: 'top-right' }
-          );
-        })
-        .catch(() => {}); // Silently fail — reminders are non-critical
+        // Retention toast
+        if (retentionRes) {
+          const alerts = retentionRes.data?.data?.alerts ?? [];
+          if (alerts.length > 0) {
+            toast.custom(
+              (t) => (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => { toast.dismiss(t); navigate('/retention?window=30'); }}
+                  onKeyDown={(e) => e.key === 'Enter' && navigate('/retention?window=30')}
+                  style={{
+                    cursor: 'pointer',
+                    background: '#0A2342',
+                    color: 'white',
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    borderLeft: '4px solid #0E9F6E',
+                    fontSize: '14px',
+                    lineHeight: '1.5',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                    minWidth: '300px',
+                    maxWidth: '420px',
+                  }}
+                  data-testid="retention-alert-toast"
+                >
+                  🔄 {alerts.length} client rate(s) expiring within 30 days — check Retention Pipeline
+                </div>
+              ),
+              { duration: 6000, position: 'top-right' }
+            );
+          }
+        }
+      }); // Silently fail — toasts are non-critical
     } else {
       setError(result.error);
     }

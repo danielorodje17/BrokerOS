@@ -329,6 +329,22 @@ export function CaseDetail() {
             <div className="text-[#111827] font-medium">{caseData.rate_percent ? `${caseData.rate_percent}%` : '-'}</div>
           </div>
           <div>
+            <div className="text-sm text-[#6B7280] mb-1">Rate Expiry Date</div>
+            <div className="flex items-center gap-2">
+              <span className="text-[#111827] font-medium">{formatDate(caseData.rate_expiry_date)}</span>
+              {(() => {
+                if (!caseData.rate_expiry_date) return null;
+                const expiry = new Date(caseData.rate_expiry_date);
+                const today = new Date();
+                today.setHours(0,0,0,0);
+                const diffDays = Math.ceil((expiry - today) / (1000*60*60*24));
+                if (diffDays < 0) return <span style={{background:'#FEE2E2',color:'#EF4444',padding:'2px 8px',borderRadius:'9999px',fontSize:'11px',fontWeight:600}}>Expired</span>;
+                if (diffDays <= 90) return <span style={{background:'#FEF3C7',color:'#D97706',padding:'2px 8px',borderRadius:'9999px',fontSize:'11px',fontWeight:600}}>Expiring Soon</span>;
+                return null;
+              })()}
+            </div>
+          </div>
+          <div>
             <div className="text-sm text-[#6B7280] mb-1">Expected Completion</div>
             <div className="text-[#111827] font-medium">{formatDate(caseData.expected_completion_date)}</div>
           </div>

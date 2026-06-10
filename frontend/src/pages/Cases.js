@@ -483,6 +483,19 @@ export function Cases() {
                 />
               </div>
               <div>
+                <label className="form-label">Rate Expiry Date</label>
+                <Input
+                  type="date"
+                  value={formData.rate_expiry_date}
+                  onChange={(e) => setFormData({ ...formData, rate_expiry_date: e.target.value })}
+                  className="form-input"
+                  data-testid="case-rate-expiry-input"
+                />
+              </div>
+            </div>
+
+            <div className="form-grid">
+              <div>
                 <label className="form-label">Expected completion</label>
                 <Input
                   type="date"

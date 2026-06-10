@@ -50,6 +50,7 @@ class CaseCreate(BaseModel):
     rate_expiry_date: Optional[str] = None
     expected_completion_date: Optional[str] = None
     notes: Optional[str] = None
+    retention_status: Optional[str] = "none"
 
 
 class LenderCreate(BaseModel):

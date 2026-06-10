@@ -15,6 +15,7 @@ import { Pipeline } from './pages/Pipeline';
 import { Lenders } from './pages/Lenders';
 import { Commissions } from './pages/Commissions';
 import { Settings } from './pages/Settings';
+import Retention from './pages/Retention';
 import './App.css';
 
 function OnboardingCheck({ children }) {
@@ -61,6 +62,7 @@ function App() {
             <Route path="pipeline" element={<Pipeline />} />
             <Route path="lenders" element={<Lenders />} />
             <Route path="commissions" element={<Commissions />} />
+            <Route path="retention" element={<Retention />} />
             <Route path="settings" element={<Settings />} />
           </Route>
           

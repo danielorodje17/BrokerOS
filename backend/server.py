@@ -19,6 +19,7 @@ from routes import (
     documents_router,
     dashboard_router,
     ai_router,
+    retention_router,
 )
 from routes.deps import db, hash_password, verify_password, init_storage, logger, create_firm_for_user
 
@@ -40,6 +41,7 @@ api_router.include_router(cases_notes_router)
 api_router.include_router(documents_router)
 api_router.include_router(dashboard_router)
 api_router.include_router(ai_router)
+api_router.include_router(retention_router)
 
 
 # ========== STARTUP ==========
