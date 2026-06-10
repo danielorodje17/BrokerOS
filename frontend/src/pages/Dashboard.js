@@ -31,6 +31,7 @@ export function Dashboard() {
   const [briefing, setBriefing] = useState(null);  // {briefing, generated_at, cached}
   const [briefingLoading, setBriefingLoading] = useState(false);
   const [briefingChecked, setBriefingChecked] = useState(false);
+  const [briefingError, setBriefingError] = useState(false);
 
   useEffect(() => {
     fetchStats();
@@ -64,11 +65,13 @@ export function Dashboard() {
 
   const generateBriefing = async () => {
     setBriefingLoading(true);
+    setBriefingError(false);
     try {
       const { data } = await axios.get(`${API}/ai/daily-briefing`, { withCredentials: true });
       setBriefing(data.data);
     } catch (error) {
       console.error('Failed to generate briefing:', error);
+      setBriefingError(true);
     } finally {
       setBriefingLoading(false);
     }
@@ -76,12 +79,15 @@ export function Dashboard() {
 
   const regenerateBriefing = async () => {
     setBriefingLoading(true);
+    setBriefingError(false);
+    setBriefing(null);
     try {
       await axios.delete(`${API}/ai/daily-briefing`, { withCredentials: true });
       const { data } = await axios.get(`${API}/ai/daily-briefing`, { withCredentials: true });
       setBriefing(data.data);
     } catch (error) {
       console.error('Failed to regenerate briefing:', error);
+      setBriefingError(true);
     } finally {
       setBriefingLoading(false);
     }
@@ -90,6 +96,33 @@ export function Dashboard() {
   const todayDisplay = new Date().toLocaleDateString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
+
+  // ── Briefing section parser ──────────────────────────────────────────────
+  const parseBriefingSections = (text) => {
+    try {
+      const MARKERS = ['SUMMARY', "TODAY'S PRIORITIES", 'WATCH LIST', 'CLOSING NOTE'];
+      const positions = [];
+      for (const m of MARKERS) {
+        const search = (m + ':').toUpperCase();
+        const idx = text.toUpperCase().indexOf(search);
+        if (idx !== -1) positions.push({ key: m, idx });
+      }
+      if (positions.length < 4) return null;
+      positions.sort((a, b) => a.idx - b.idx);
+      const sections = {};
+      positions.forEach((p, i) => {
+        const start = p.idx + p.key.length + 1;
+        const end = i + 1 < positions.length ? positions[i + 1].idx : text.length;
+        sections[p.key] = text.slice(start, end).trim();
+      });
+      return sections;
+    } catch {
+      return null;
+    }
+  };
+
+  const parseListItems = (text) =>
+    text.split('\n').map(l => l.replace(/^\d+[\.\)]\s*/, '').trim()).filter(Boolean);
 
   const activePipelineStages = ['new_enquiry', 'fact_find', 'aip_submitted', 'aip_received', 'full_application', 'valuation', 'offer', 'exchange'];
 
@@ -144,25 +177,62 @@ export function Dashboard() {
             </svg>
             <span className="italic text-[#6B7280]">Claude is reviewing your pipeline…</span>
           </div>
+        ) : briefingError ? (
+          <div className="border border-[#EF4444] rounded-md p-4" data-testid="briefing-error">
+            <p className="text-sm text-[#EF4444] mb-3">Briefing unavailable — please try again later.</p>
+            <button
+              type="button"
+              onClick={generateBriefing}
+              className="bg-[#EF4444] hover:bg-[#DC2626] text-white text-sm font-medium px-4 py-2 rounded-md transition-colors"
+              data-testid="briefing-retry-btn"
+            >
+              Try Again
+            </button>
+          </div>
         ) : briefing && briefing.briefing ? (
-          <div className="text-[#111827] leading-relaxed space-y-3" data-testid="briefing-content">
-            {briefing.briefing.split(/\n\n+/).map((para, idx) => (
-              <p key={idx} className="whitespace-pre-wrap">{para}</p>
-            ))}
+          <div data-testid="briefing-content">
+            {(() => {
+              const sections = parseBriefingSections(briefing.briefing);
+              if (!sections) {
+                return <p className="text-sm text-[#111827] leading-relaxed whitespace-pre-wrap">{briefing.briefing}</p>;
+              }
+              return (
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-[11px] font-bold text-[#0E9F6E] uppercase tracking-wide mb-1">Summary</p>
+                    <p className="text-sm text-[#111827] leading-relaxed">{sections['SUMMARY']}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-[#0E9F6E] uppercase tracking-wide mb-1">Today's Priorities</p>
+                    <ol className="list-decimal list-outside pl-5 space-y-1 text-sm text-[#111827] leading-relaxed">
+                      {parseListItems(sections["TODAY'S PRIORITIES"]).map((item, i) => <li key={i}>{item}</li>)}
+                    </ol>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-[#0E9F6E] uppercase tracking-wide mb-1">Watch List</p>
+                    <ol className="list-decimal list-outside pl-5 space-y-1 text-sm text-[#111827] leading-relaxed">
+                      {parseListItems(sections['WATCH LIST']).map((item, i) => <li key={i}>{item}</li>)}
+                    </ol>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-[#0E9F6E] uppercase tracking-wide mb-1">Closing Note</p>
+                    <p className="text-sm text-[#111827] leading-relaxed">{sections['CLOSING NOTE']}</p>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         ) : briefingChecked ? (
-          <div data-testid="briefing-empty">
-            <p className="text-sm text-[#6B7280] mb-3">
-              Get a personalised AI briefing on your pipeline and what needs attention today.
-            </p>
+          <div className="flex flex-col items-center py-4" data-testid="briefing-empty">
             <button
               type="button"
               onClick={generateBriefing}
               className="bg-[#0E9F6E] hover:bg-[#0B8A5E] text-white text-sm font-medium px-4 py-2 rounded-md transition-colors"
               data-testid="generate-briefing-btn"
             >
-              Generate Briefing
+              Generate Today's Briefing
             </button>
+            <p className="text-xs text-[#6B7280] italic mt-2">Takes about 10 seconds</p>
           </div>
         ) : (
           <div className="h-6" />

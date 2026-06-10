@@ -460,8 +460,9 @@ async def daily_briefing(probe: bool = False, user: dict = Depends(get_current_u
                 pass
 
         case_lines.append(
-            f"- {client_name}: {_STAGE_LABELS.get(c.get('stage'), c.get('stage'))} "
-            f"({days_in_stage} days), lender: {lender_name}"
+            f"- {client_name} | {c.get('mortgage_type', 'residential')} | "
+            f"Stage: {_STAGE_LABELS.get(c.get('stage'), c.get('stage'))} | "
+            f"{days_in_stage} days in stage | Lender: {lender_name or 'Not assigned'}"
         )
 
     # ── Commission alerts (overdue + due this week) ──────
@@ -528,31 +529,43 @@ async def daily_briefing(probe: bool = False, user: dict = Depends(get_current_u
     # ── Build prompt ─────────────────────────────────────
     today_display = today.strftime("%A, %d %B %Y")
     pipeline_block = "\n".join(case_lines) if case_lines else "No active cases."
-    clawback_block = "\n".join(clawback_lines) if clawback_lines else "None within 60 days."
+    clawback_block = "\n".join(clawback_lines) if clawback_lines else "None"
+
+    first_name = user.get("first_name", "")
+    last_name = user.get("last_name", "")
+    fca_number = user.get("fca_number") or "Not provided"
 
     prompt = (
-        "You are a UK mortgage broker assistant generating a daily briefing.\n\n"
-        f"Today is {today_display}. The broker has {len(cases)} active cases.\n\n"
-        "PIPELINE SNAPSHOT:\n"
+        f"You are a UK mortgage broker assistant generating a daily briefing. "
+        f"Today is {today_display}. Use British English throughout.\n\n"
+        f"BROKER: {first_name} {last_name}, FCA Number: {fca_number}\n"
+        f"ACTIVE PIPELINE: {len(cases)} cases\n\n"
+        f"PIPELINE DETAIL:\n"
         f"{pipeline_block}\n\n"
-        "COMMISSION ALERTS:\n"
-        f"- Overdue: {overdue_count} commissions totalling £{overdue_total:,.0f}\n"
-        f"- Due this week: {due_week_count} commissions totalling £{due_week_total:,.0f}\n\n"
-        "CLAWBACK RISK (expiring within 60 days):\n"
+        f"COMMISSION ALERTS:\n"
+        f"- Overdue payments: {overdue_count} totalling £{overdue_total:,.0f}\n"
+        f"- Due within 14 days: {due_week_count} totalling £{due_week_total:,.0f}\n\n"
+        f"CLAWBACK RISK (expiring within 60 days):\n"
         f"{clawback_block}\n\n"
-        "Generate a concise daily briefing for the broker. Structure it as:\n"
-        "1. A one-sentence overall summary of where the pipeline stands today\n"
-        "2. \"Today's Priorities\" — up to 3 specific actions the broker should take today, each as one sentence\n"
-        "3. \"Watch List\" — up to 3 cases or commissions that need attention this week, each as one sentence\n"
-        "4. One brief closing observation or encouragement\n\n"
-        "Be direct, specific, and professional. Use British English. Name specific clients and lenders where relevant. Do not use generic filler phrases. "
-        "FORMATTING RULES: Do not use markdown syntax. Do not use '#', '##', '**', '*', or any other markdown characters. "
-        "Write section labels as plain text on their own line (e.g., 'Today's Priorities:' not '## Today's Priorities'). "
-        "Use plain numbered lines (1. 2. 3.) for list items. Separate sections with a blank line."
+        "Generate a daily briefing structured with exactly these four sections. "
+        "Use a blank line between each section.\n\n"
+        "SUMMARY: [One sentence: overall pipeline status today]\n\n"
+        "TODAY'S PRIORITIES:\n"
+        "[Numbered list of up to 3 specific actions the broker should take today. "
+        "Name specific clients, stages, and lenders. If nothing is urgent, say so in one sentence.]\n\n"
+        "WATCH LIST:\n"
+        "[Numbered list of up to 3 cases or commissions needing attention this week. "
+        "State clearly why each needs attention.]\n\n"
+        "CLOSING NOTE:\n"
+        "[One sentence: a direct professional observation or encouragement based on the actual "
+        "pipeline data above. Not generic.]\n\n"
+        "Be specific. Use real client names and lender names from the data. "
+        "Do not invent information not present above. "
+        "Do not use markdown formatting, asterisks, or dashes for list items. "
+        "Write section labels exactly as shown above. Use numbered lines (1. 2. 3.) for list items."
     )
 
     # ── Call Claude ──────────────────────────────────────
-    briefing_text = ""
     try:
         chat = LlmChat(
             api_key=EMERGENT_LLM_KEY,
@@ -563,10 +576,9 @@ async def daily_briefing(probe: bool = False, user: dict = Depends(get_current_u
         briefing_text = await chat.send_message(UserMessage(text=prompt))
     except Exception as e:
         logger.exception("Claude daily-briefing call failed: %s", e)
-        briefing_text = (
-            f"Daily briefing unavailable (AI service error). "
-            f"You have {len(cases)} active cases, {overdue_count} overdue commissions, "
-            f"and {due_week_count} due this week."
+        raise HTTPException(
+            status_code=503,
+            detail={"success": False, "error": "Briefing generation failed — please try again"},
         )
 
     generated_at = datetime.now(timezone.utc).isoformat()
@@ -601,4 +613,4 @@ async def regenerate_daily_briefing(user: dict = Depends(get_current_user)):
     """Clear today's cached briefing so the next GET regenerates it."""
     today_iso = datetime.now(timezone.utc).date().isoformat()
     await db.daily_briefings.delete_one({"user_id": user["id"], "date": today_iso})
-    return {"success": True, "data": None, "message": "Briefing cache cleared"}
+    return {"success": True, "data": {"cleared": True}, "message": None}

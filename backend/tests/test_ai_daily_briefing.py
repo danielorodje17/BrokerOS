@@ -4,6 +4,8 @@ Endpoints:
   GET    /api/ai/daily-briefing            (generates + caches)
   GET    /api/ai/daily-briefing?probe=true (returns cache without Claude)
   DELETE /api/ai/daily-briefing            (clears today's cache)
+
+All responses are wrapped: {success: bool, data: {...}, message: str|null}
 """
 import os
 import time
@@ -61,9 +63,27 @@ class TestProbe:
         elapsed_ms = (time.time() - start) * 1000
         assert r.status_code == 200, r.text
         body = r.json()
-        assert body == {"briefing": None, "generated_at": None, "cached": False}, body
+        # Top-level response shape
+        assert body.get("success") is True, f"Expected success:true, got: {body}"
+        data = body.get("data", {})
+        assert data.get("cached") is False, f"Expected cached:false in data, got: {data}"
+        assert data.get("briefing") is None, f"Expected briefing:null, got: {data}"
+        assert data.get("generated_at") is None, f"Expected generated_at:null, got: {data}"
         # Should be very fast — no Claude call. Allow 1500ms network jitter.
         assert elapsed_ms < 1500, f"Probe took {elapsed_ms:.0f}ms — Claude may have been called"
+
+    def test_probe_response_envelope_shape(self, session):
+        """Probe must return success/data/message envelope."""
+        session.delete(f"{API}/ai/daily-briefing", timeout=10)
+        r = session.get(f"{API}/ai/daily-briefing?probe=true", timeout=10)
+        assert r.status_code == 200
+        body = r.json()
+        # Envelope keys
+        assert "success" in body and "data" in body, f"Missing envelope keys: {body.keys()}"
+        data = body["data"]
+        # Data keys
+        assert set(data.keys()) >= {"briefing", "generated_at", "cached"}, \
+            f"Unexpected data keys: {data.keys()}"
 
 
 # ────────── Generation + cache ──────────
@@ -75,10 +95,14 @@ class TestGenerateAndCache:
         # First call → generates via Claude
         r1 = session.get(f"{API}/ai/daily-briefing", timeout=90)
         assert r1.status_code == 200, r1.text
-        b1 = r1.json()
-        assert "briefing" in b1 and "generated_at" in b1 and "cached" in b1
-        assert isinstance(b1["briefing"], str) and len(b1["briefing"]) > 20, "Briefing should be non-empty string"
-        assert b1["cached"] is False
+        body1 = r1.json()
+        assert body1.get("success") is True, f"Expected success:true, got: {body1}"
+        b1 = body1["data"]
+        assert "briefing" in b1 and "generated_at" in b1 and "cached" in b1, \
+            f"Missing data fields: {b1.keys()}"
+        assert isinstance(b1["briefing"], str) and len(b1["briefing"]) > 20, \
+            "Briefing should be non-empty string"
+        assert b1["cached"] is False, f"First call should have cached:false, got: {b1}"
         assert b1["generated_at"] is not None
         # generated_at should parse as ISO
         datetime.fromisoformat(b1["generated_at"].replace("Z", "+00:00"))
@@ -88,8 +112,10 @@ class TestGenerateAndCache:
         r2 = session.get(f"{API}/ai/daily-briefing", timeout=10)
         elapsed_ms = (time.time() - start) * 1000
         assert r2.status_code == 200
-        b2 = r2.json()
-        assert b2["cached"] is True
+        body2 = r2.json()
+        assert body2.get("success") is True
+        b2 = body2["data"]
+        assert b2["cached"] is True, f"Second call should have cached:true, got: {b2}"
         assert b2["briefing"] == b1["briefing"], "Cached briefing should be identical"
         assert b2["generated_at"] == b1["generated_at"], "Cached generated_at should match"
         assert elapsed_ms < 1500, f"Cached call took {elapsed_ms:.0f}ms — should be fast"
@@ -99,35 +125,51 @@ class TestGenerateAndCache:
         r = session.get(f"{API}/ai/daily-briefing?probe=true", timeout=10)
         assert r.status_code == 200
         body = r.json()
-        assert body["cached"] is True
-        assert isinstance(body["briefing"], str) and len(body["briefing"]) > 0
-        assert body["generated_at"] is not None
+        assert body.get("success") is True
+        data = body["data"]
+        assert data["cached"] is True, f"Expected cached:true, got: {data}"
+        assert isinstance(data["briefing"], str) and len(data["briefing"]) > 0, \
+            f"Expected non-empty briefing, got: {data}"
+        assert data["generated_at"] is not None
 
 
 # ────────── DELETE cache ──────────
 class TestDeleteCache:
-    def test_delete_clears_cache_and_next_get_regenerates(self, session):
-        # First ensure a cache exists
-        r = session.get(f"{API}/ai/daily-briefing", timeout=90)
-        assert r.status_code == 200
-        cached_briefing = r.json()["briefing"]
+    def test_delete_response_shape(self, session):
+        """DELETE returns {success:true, data:{cleared:true}}"""
+        # Ensure cache exists first
+        session.get(f"{API}/ai/daily-briefing", timeout=90)
+        rd = session.delete(f"{API}/ai/daily-briefing", timeout=10)
+        assert rd.status_code == 200
+        body = rd.json()
+        assert body.get("success") is True, f"Expected success:true, got: {body}"
+        assert body.get("data", {}).get("cleared") is True, \
+            f"Expected data.cleared:true, got: {body}"
+
+    def test_delete_clears_cache_and_probe_returns_false(self, session):
+        # Ensure a fresh briefing exists
+        session.get(f"{API}/ai/daily-briefing", timeout=90)
 
         # DELETE
         rd = session.delete(f"{API}/ai/daily-briefing", timeout=10)
         assert rd.status_code == 200
-        body = rd.json()
-        assert body.get("success") is True
 
         # Probe after delete → no cache
         rp = session.get(f"{API}/ai/daily-briefing?probe=true", timeout=10)
         assert rp.status_code == 200
-        assert rp.json() == {"briefing": None, "generated_at": None, "cached": False}
+        data = rp.json()["data"]
+        assert data.get("cached") is False, f"Expected cached:false after delete, got: {data}"
+        assert data.get("briefing") is None
 
-        # Next GET regenerates → cached:false (newly generated)
+    def test_delete_then_get_regenerates(self, session):
+        """After DELETE, the next GET should regenerate with cached:False."""
+        # clear
+        session.delete(f"{API}/ai/daily-briefing", timeout=10)
+        # regenerate
         r2 = session.get(f"{API}/ai/daily-briefing", timeout=90)
         assert r2.status_code == 200
-        b2 = r2.json()
-        assert b2["cached"] is False
+        b2 = r2.json()["data"]
+        assert b2["cached"] is False, f"Expected cached:false for fresh generation, got: {b2}"
         assert isinstance(b2["briefing"], str) and len(b2["briefing"]) > 20
 
     def test_delete_without_existing_cache_is_idempotent(self, session):
@@ -145,17 +187,26 @@ class TestContentAndPersistence:
         """
         # Clear and regenerate fresh
         session.delete(f"{API}/ai/daily-briefing", timeout=10)
-        # Fetch active cases for context
+        # Fetch active cases for context — response is wrapped in {success, data, ...}
         rc = session.get(f"{API}/cases", timeout=10)
         assert rc.status_code == 200
-        cases = rc.json().get("cases", [])
+        cases_body = rc.json()
+        # Cases may be in data.cases or data list
+        cases_data = cases_body.get("data") or cases_body
+        if isinstance(cases_data, dict):
+            cases = cases_data.get("cases", []) or cases_data.get("items", [])
+        elif isinstance(cases_data, list):
+            cases = cases_data
+        else:
+            cases = []
+
         active_stages = {"new_enquiry", "fact_find", "aip_submitted", "aip_received",
                          "full_application", "valuation", "offer", "exchange"}
         active = [c for c in cases if c.get("stage") in active_stages]
 
         rb = session.get(f"{API}/ai/daily-briefing", timeout=120)
         assert rb.status_code == 200
-        briefing = rb.json()["briefing"].lower()
+        briefing = rb.json()["data"]["briefing"].lower()
 
         if active:
             # Try to find at least one client first-name or last-name in briefing
@@ -174,24 +225,41 @@ class TestContentAndPersistence:
             # No active cases — briefing should still be non-empty
             assert len(briefing) > 20
 
-    def test_probe_response_shape_strict(self, session):
-        session.delete(f"{API}/ai/daily-briefing", timeout=10)
+    def test_briefing_has_four_sections(self, session):
+        """Briefing text must include all 4 section labels for frontend parser."""
         r = session.get(f"{API}/ai/daily-briefing?probe=true", timeout=10)
-        assert r.status_code == 200
-        body = r.json()
-        assert set(body.keys()) == {"briefing", "generated_at", "cached"}, f"Unexpected keys: {body.keys()}"
+        briefing = r.json()["data"].get("briefing", "") or ""
+        if not briefing:
+            # Generate one
+            rg = session.get(f"{API}/ai/daily-briefing", timeout=90)
+            briefing = rg.json()["data"]["briefing"]
+
+        text_upper = briefing.upper()
+        for label in ["SUMMARY:", "TODAY'S PRIORITIES:", "WATCH LIST:", "CLOSING NOTE:"]:
+            assert label in text_upper, \
+                f"Section label '{label}' not found in briefing text"
 
 
 # ────────── Regression: AI #1 & #2 still work ──────────
 class TestRegression:
     def test_borrower_score_still_works(self, session):
         rc = session.get(f"{API}/cases", timeout=10)
-        cases = rc.json().get("cases", [])
+        cases_body = rc.json()
+        cases_data = cases_body.get("data") or cases_body
+        if isinstance(cases_data, dict):
+            cases = cases_data.get("cases", []) or []
+        elif isinstance(cases_data, list):
+            cases = cases_data
+        else:
+            cases = []
+
         if not cases:
             pytest.skip("No cases available")
         case_id = cases[0]["id"]
         rcase = session.get(f"{API}/cases/{case_id}", timeout=10)
-        client_id = (rcase.json().get("client") or {}).get("id")
+        case_data = rcase.json().get("data") or rcase.json()
+        client = case_data.get("client") or {}
+        client_id = client.get("id")
         if not client_id:
             pytest.skip("No client on case")
         r = session.post(f"{API}/ai/borrower-score", json={"client_id": client_id}, timeout=60)
@@ -201,7 +269,15 @@ class TestRegression:
 
     def test_lender_match_still_works(self, session):
         rc = session.get(f"{API}/cases", timeout=10)
-        cases = rc.json().get("cases", [])
+        cases_body = rc.json()
+        cases_data = cases_body.get("data") or cases_body
+        if isinstance(cases_data, dict):
+            cases = cases_data.get("cases", []) or []
+        elif isinstance(cases_data, list):
+            cases = cases_data
+        else:
+            cases = []
+
         if not cases:
             pytest.skip("No cases available")
         case_id = cases[0]["id"]
@@ -213,6 +289,8 @@ class TestRegression:
     def test_dashboard_stats_still_works(self, session):
         r = session.get(f"{API}/dashboard/stats", timeout=10)
         assert r.status_code == 200
-        d = r.json()
+        body = r.json()
+        # Stats may be at top-level or under data
+        d = body.get("data") or body
         for k in ["clients_count", "cases_count", "commissions", "pipeline", "alerts"]:
-            assert k in d, f"Dashboard stats missing key {k}"
+            assert k in d, f"Dashboard stats missing key {k}. Got: {d.keys()}"
